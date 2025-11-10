@@ -1295,9 +1295,21 @@ def convert():
 
     # Check if URL is a playlist
     if 'list=' in url or '/playlist?' in url:
-        playlist_info = extract_playlist_info(url)
-        if playlist_info.get('is_playlist'):
-            return redirect(url_for('playlist_confirm', url=url, format=output_format, quality=quality))
+        # For watch?v=...&list=... URLs, convert to playlist-only URL
+        if '&list=' in url or '?list=' in url:
+            import re
+            list_match = re.search(r'[?&]list=([^&]+)', url)
+            if list_match:
+                playlist_id = list_match.group(1)
+                # Convert to playlist URL to force yt-dlp to treat it as a playlist
+                playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
+                playlist_info = extract_playlist_info(playlist_url)
+                if playlist_info.get('is_playlist'):
+                    return redirect(url_for('playlist_confirm', url=playlist_url, format=output_format, quality=quality))
+        else:
+            playlist_info = extract_playlist_info(url)
+            if playlist_info.get('is_playlist'):
+                return redirect(url_for('playlist_confirm', url=url, format=output_format, quality=quality))
 
     file_id = generate_file_id(url)
 
