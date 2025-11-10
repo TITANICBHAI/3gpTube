@@ -8,10 +8,13 @@ import sys
 import logging
 import secrets
 import re
+import gc
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash
 import hashlib
 import yt_dlp
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.video.tools.subtitles import SubtitlesClip
 
 # Configure logging
 logging.basicConfig(
@@ -69,6 +72,11 @@ RATE_LIMIT_BYTES = int(os.environ.get('RATE_LIMIT_BYTES', 0))  # 0 = unlimited, 
 MAX_CONCURRENT_DOWNLOADS = int(os.environ.get('MAX_CONCURRENT_DOWNLOADS', 1))
 ENABLE_DISK_SPACE_MONITORING = os.environ.get('ENABLE_DISK_SPACE_MONITORING', 'true').lower() == 'true'
 DISK_SPACE_THRESHOLD_MB = int(os.environ.get('DISK_SPACE_THRESHOLD_MB', 1500))  # Alert when < 1.5GB free
+
+# Subtitle burning settings (for Render resource constraints)
+SUBTITLE_MAX_DURATION_MINS = int(os.environ.get('SUBTITLE_MAX_DURATION_MINS', 45))  # Max 45 min for subtitle burning
+SUBTITLE_MAX_FILESIZE_MB = int(os.environ.get('SUBTITLE_MAX_FILESIZE_MB', 500))  # Max 500MB for subtitle burning
+ENABLE_SUBTITLE_BURNING = os.environ.get('ENABLE_SUBTITLE_BURNING', 'true').lower() == 'true'
 
 # Quality presets for MP3 audio conversion
 # Note: Minimum 128kbps to avoid YouTube download errors with low bitrate
@@ -488,7 +496,134 @@ def validate_cookies():
     except Exception as e:
         return False, f"Error reading cookies: {str(e)}"
 
-def download_and_convert(url, file_id, output_format='3gp', quality='auto'):
+def download_subtitles(url, file_id):
+    """
+    Download English subtitles (manual or auto-generated) from YouTube using yt-dlp.
+    Returns the path to the subtitle file if successful, None otherwise.
+    """
+    subtitle_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.srt')
+    
+    try:
+        ydl_opts = {
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],
+            'subtitlesformat': 'srt',
+            'skip_download': True,
+            'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{file_id}'),
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        # Add cookies if available for better subtitle access
+        if has_cookies():
+            ydl_opts['cookiefile'] = COOKIES_FILE
+        
+        logger.info(f"Attempting to download English subtitles for {file_id}")
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        
+        # Check if subtitle file was created
+        if os.path.exists(subtitle_path) and os.path.getsize(subtitle_path) > 0:
+            logger.info(f"✓ English subtitles downloaded successfully: {subtitle_path}")
+            return subtitle_path
+        else:
+            logger.info(f"No English subtitles available for {file_id}")
+            return None
+    
+    except Exception as e:
+        logger.warning(f"Could not download subtitles for {file_id}: {str(e)[:150]}")
+        return None
+
+def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
+    """
+    Burn subtitles into video using MoviePy with YouTube-style formatting.
+    Optimized for Render's resource constraints with memory-conscious settings.
+    
+    Args:
+        video_path: Path to input video file
+        subtitle_path: Path to SRT subtitle file
+        output_path: Path for output video with burned subtitles
+        file_id: Unique file identifier for status updates
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        update_status(file_id, {
+            'status': 'burning_subtitles',
+            'progress': 'Burning subtitles into video (YouTube style)... This may take a few minutes.'
+        })
+        
+        logger.info(f"Starting subtitle burning for {file_id}")
+        
+        # Generator function for YouTube-style subtitles with memory efficiency
+        def generator(txt):
+            return TextClip(
+                txt, 
+                font='Arial-Bold',
+                fontsize=18,
+                color='white',
+                bg_color='black',
+                size=(None, None),
+                method='caption',
+                align='center',
+                stroke_color='black',
+                stroke_width=2
+            )
+        
+        # Load video with memory-conscious settings
+        video = VideoFileClip(video_path)
+        
+        # Create subtitles clip
+        subtitles = SubtitlesClip(subtitle_path, generator)
+        
+        # Position subtitles at bottom (YouTube style)
+        subtitles = subtitles.set_position(('center', 'bottom'))
+        
+        # Composite video with subtitles
+        final_video = CompositeVideoClip([video, subtitles])
+        
+        # Write output with memory-conscious settings for Render
+        logger.info(f"Writing video with burned subtitles for {file_id}")
+        
+        final_video.write_videofile(
+            output_path,
+            codec='libx264',
+            audio_codec='aac',
+            temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
+            remove_temp=True,
+            threads=1,  # Limit threads for Render constraints
+            preset='ultrafast',  # Fast encoding for resource efficiency
+            ffmpeg_params=['-bufsize', '2M'],  # Limit buffer to save memory
+            logger=None  # Suppress moviepy's verbose output
+        )
+        
+        # Clean up to free memory
+        final_video.close()
+        video.close()
+        gc.collect()
+        
+        logger.info(f"✓ Subtitles burned successfully for {file_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Subtitle burning failed for {file_id}: {str(e)[:200]}")
+        
+        # Clean up on error
+        try:
+            if 'video' in locals() and video:
+                video.close()
+            if 'final_video' in locals() and final_video:
+                final_video.close()
+            gc.collect()
+        except:
+            pass
+        
+        return False
+
+def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn_subtitles=False):
     # Check disk space BEFORE starting download
     if ENABLE_DISK_SPACE_MONITORING:
         has_space, free_mb = check_disk_space()
@@ -892,6 +1027,59 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto'):
                 logger.warning(f"Insufficient space for conversion: {free_mb:.0f}MB free, need ~{file_size_mb*1.5:.0f}MB")
                 os.remove(temp_video)
                 raise Exception(f"Insufficient disk space for conversion. Downloaded video is {file_size_mb:.1f}MB but only {free_mb:.0f}MB free. Try a shorter video.")
+
+        # Handle subtitle burning if requested (only for video formats, not MP3)
+        if burn_subtitles and ENABLE_SUBTITLE_BURNING and output_format != 'mp3':
+            # Check resource limits for subtitle burning (Render constraints)
+            duration_mins = duration / 60
+            if duration_mins > SUBTITLE_MAX_DURATION_MINS:
+                logger.warning(f"Video too long for subtitle burning: {duration_mins:.1f} mins > {SUBTITLE_MAX_DURATION_MINS} mins limit")
+                update_status(file_id, {
+                    'progress': f'⚠️ Subtitle burning skipped: Video is {duration_mins:.1f} minutes (limit: {SUBTITLE_MAX_DURATION_MINS} mins for resource constraints)'
+                })
+            elif file_size_mb > SUBTITLE_MAX_FILESIZE_MB:
+                logger.warning(f"Video too large for subtitle burning: {file_size_mb:.1f}MB > {SUBTITLE_MAX_FILESIZE_MB}MB limit")
+                update_status(file_id, {
+                    'progress': f'⚠️ Subtitle burning skipped: Video is {file_size_mb:.1f}MB (limit: {SUBTITLE_MAX_FILESIZE_MB}MB for resource constraints)'
+                })
+            else:
+                # Download English subtitles
+                subtitle_file = download_subtitles(url, file_id)
+                
+                if subtitle_file:
+                    # Burn subtitles using MoviePy
+                    temp_video_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
+                    
+                    if burn_subtitles_moviepy(temp_video, subtitle_file, temp_video_with_subs, file_id):
+                        # Replace temp_video with subtitle-burned version
+                        try:
+                            os.remove(temp_video)
+                        except Exception as e:
+                            logger.warning(f"Could not remove original temp video: {e}")
+                        
+                        temp_video = temp_video_with_subs
+                        logger.info(f"✓ Using subtitle-burned video for conversion: {temp_video}")
+                        
+                        # Clean up subtitle file
+                        try:
+                            os.remove(subtitle_file)
+                        except Exception as e:
+                            logger.warning(f"Could not remove subtitle file: {e}")
+                    else:
+                        logger.warning(f"Subtitle burning failed, continuing with original video")
+                        # Clean up failed subtitle burn attempt
+                        if os.path.exists(temp_video_with_subs):
+                            try:
+                                os.remove(temp_video_with_subs)
+                            except:
+                                pass
+                        if os.path.exists(subtitle_file):
+                            try:
+                                os.remove(subtitle_file)
+                            except:
+                                pass
+                else:
+                    logger.info(f"No English subtitles available, proceeding without subtitle burning")
 
         est_time = max(1, int(duration / 60))
 
