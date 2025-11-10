@@ -18,14 +18,14 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 **November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
 - ✓ Implemented English subtitle burning capability using MoviePy
-- ✓ **3GP subtitle burning**: Subtitles burned BELOW video in expanded canvas
-  - Optimized for Nokia 5310 (240x320 screen) with 176x144 video
-  - Canvas expanded to 240x240 (video at top, black space below for subtitles)
-  - Font size: 12px for readability in 96px subtitle area
-  - Size constraint: (230, None) - allows natural wrapping to max 2 lines
-  - Method: 'caption' with PRESERVED line breaks (YouTube-style dynamic lines)
-  - Subtitles positioned at Y=200 (below 144px video, in black space)
-  - Different speakers get different lines (preserves YouTube's line breaks)
+- ✓ **3GP subtitle burning**: Split 2-line subtitles with line 1 below, line 2 above video
+  - Optimized for Nokia 5310 (240x320 screen) with 176x144 video centered
+  - Canvas expanded to 240x320 (full screen, video centered vertically)
+  - Font size: 12px for readability
+  - First line positioned BELOW video at Y=250 (primary position)
+  - Second line (if exists) positioned ABOVE video at Y=50
+  - Video centered at Y=88 (88px gap top and bottom for subtitles)
+  - Preserves YouTube's line breaks - different speakers get different lines
   - Output: {file_id}_with_subs.3gp (replaces regular 3GP)
 - ✓ **MP4 subtitle burning**: YouTube-style multi-line text (fontsize=18, preserves line breaks)
 - ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
@@ -80,11 +80,13 @@ Preferred communication style: Simple, everyday language.
   - File splitting capability for large files (re-encoding each part)
   - **Subtitle Burning (EXPERIMENTAL)**: MoviePy-based subtitle overlay
     - Downloads English subtitles (manual or auto-generated) via yt-dlp
-    - **3GP format**: Subtitles positioned BELOW video for Nokia 5310 (240x320 screen, 176x144 video)
-      - Canvas expanded to 240x240 (video at top, black space below for subtitles)
+    - **3GP format**: Split 2-line subtitles for Nokia 5310 (240x320 screen, 176x144 video)
+      - Canvas expanded to 240x320 (full screen, video centered vertically at Y=88)
       - Font size: 12px, size constraint: (230, None) for natural wrapping
-      - Line breaks PRESERVED (YouTube-style dynamic 2-line max, different speakers get different lines)
-      - Positioned at Y=200 in black space below 144px video (no overlap on video content)
+      - First line positioned BELOW video at Y=250 (primary position)
+      - Second line (if exists) positioned ABOVE video at Y=50
+      - Line breaks PRESERVED (YouTube-style dynamic lines, different speakers get different lines)
+      - No overlap on video content - subtitles in 88px gaps above and below
       - Burned after 3GP conversion
       - Output file: {file_id}_with_subs.3gp
     - **MP4 format**: Multi-line YouTube-style text (fontsize=18, preserves line breaks)
