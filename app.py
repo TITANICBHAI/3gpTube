@@ -714,8 +714,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             
             # Get subtitle text (all lines after timing) - join as single line
             subtitle_text = ' '.join(lines[2:]).replace('\n', ' ')
-            # Remove line breaks and make it single line
-            subtitle_text = subtitle_text.replace('\\N', ' ').replace('\N', ' ')
+            # Remove ASS-style line breaks (\\N) and make it single line
+            subtitle_text = subtitle_text.replace('\\N', ' ')
             
             # Create ASS event
             ass_event = f"Dialogue: 0,{ass_start},{ass_end},Default,,0,0,0,,{subtitle_text}"
