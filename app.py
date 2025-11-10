@@ -734,6 +734,138 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return False
 
 
+def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id):
+    """
+    Burn subtitles into 3GP video using FFmpeg with ASS format.
+    Creates dual-line subtitles: line 1 at bottom, line 2 at top.
+    Keeps video at exact 176x144 resolution with same encoding as FFmpeg conversion.
+    
+    Args:
+        video_path: Path to input 3GP video file
+        subtitle_path: Path to SRT subtitle file
+        output_path: Path for output video with burned subtitles
+        file_id: Unique file identifier for status updates
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        update_status(file_id, {
+            'status': 'burning_subtitles',
+            'progress': 'Burning subtitles into 3GP... This may take a few minutes.'
+        })
+        
+        logger.info(f"Starting FFmpeg subtitle burning for {file_id}")
+        
+        # Create ASS file with dual-line support (line 1 at bottom, line 2 at top)
+        ass_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_subs.ass')
+        
+        # Read SRT file
+        with open(subtitle_path, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+        
+        # ASS header with two styles: one for bottom (line1), one for top (line2)
+        ass_header = """[Script Info]
+Title: 3GP Dual-Line Subtitles
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: 176
+PlayResY: 144
+Collisions: Normal
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Line1,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,3,3,5,1
+Style: Line2,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,3,3,5,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+        
+        # Parse SRT and create dual-line ASS events
+        ass_events = []
+        blocks = srt_content.strip().split('\n\n')
+        
+        for block in blocks:
+            lines = block.strip().split('\n')
+            if len(lines) < 3:
+                continue
+            
+            # Parse timing
+            timing_line = lines[1]
+            if '-->' not in timing_line:
+                continue
+            
+            start_time, end_time = timing_line.split('-->')
+            start_time = start_time.strip().replace(',', '.')
+            end_time = end_time.strip().replace(',', '.')
+            
+            # Convert time format
+            def srt_to_ass_time(srt_time):
+                parts = srt_time.split(':')
+                if len(parts) == 3:
+                    h, m, s = parts
+                    h = str(int(h))
+                    return f"{h}:{m}:{s[:5]}"
+                return srt_time
+            
+            ass_start = srt_to_ass_time(start_time)
+            ass_end = srt_to_ass_time(end_time)
+            
+            # Get subtitle text and preserve line breaks
+            subtitle_text = '\n'.join(lines[2:])  # Keep \n to preserve line breaks
+            subtitle_lines = subtitle_text.split('\n')
+            
+            # Line 1 (bottom) - always use first line or full text
+            line1_text = subtitle_lines[0] if subtitle_lines else subtitle_text
+            ass_events.append(f"Dialogue: 0,{ass_start},{ass_end},Line1,,0,0,0,,{line1_text}")
+            
+            # Line 2 (top) - only if there's a second line
+            if len(subtitle_lines) > 1 and subtitle_lines[1].strip():
+                line2_text = subtitle_lines[1]
+                ass_events.append(f"Dialogue: 0,{ass_start},{ass_end},Line2,,0,0,0,,{line2_text}")
+        
+        # Write ASS file
+        with open(ass_path, 'w', encoding='utf-8') as f:
+            f.write(ass_header)
+            f.write('\n'.join(ass_events))
+        
+        logger.info(f"✓ Created ASS subtitle file: {ass_path}")
+        
+        # Use FFmpeg to burn subtitles (same encoding as original conversion)
+        # This keeps the EXACT same format, so display size won't change
+        ffmpeg_cmd = [
+            FFMPEG_PATH,
+            '-i', video_path,
+            '-vf', f"ass={ass_path}",
+            '-c:v', 'mpeg4',
+            '-c:a', 'copy',  # Copy audio to avoid re-encoding
+            '-y',
+            output_path
+        ]
+        
+        logger.info(f"Running FFmpeg subtitle burn: {' '.join(ffmpeg_cmd[:6])}...")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+        
+        if result.returncode != 0:
+            error_msg = result.stderr[:300] if result.stderr else "Unknown FFmpeg error"
+            logger.error(f"FFmpeg subtitle burning failed: {error_msg}")
+            return False
+        
+        # Clean up ASS file
+        try:
+            os.remove(ass_path)
+        except:
+            pass
+        
+        logger.info(f"✓ Subtitles burned successfully with FFmpeg for {file_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"FFmpeg subtitle burning failed for {file_id}: {str(e)[:300]}")
+        return False
+
+
 def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3gp=False):
     """
     Burn subtitles into video using MoviePy.
@@ -1542,7 +1674,8 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if subtitle_file and output_format == '3gp':
             output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
             
-            if burn_subtitles_moviepy(output_path, subtitle_file, output_with_subs, file_id, is_3gp=True):
+            # Use FFmpeg for 3GP subtitle burning (keeps exact same format/display size)
+            if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id):
                 # Replace output_path with subtitle-burned version
                 try:
                     os.remove(output_path)
