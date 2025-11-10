@@ -337,7 +337,7 @@ def extract_playlist_info(url):
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            if info.get('_type') == 'playlist':
+            if info and info.get('_type') == 'playlist':
                 videos = []
                 for entry in info.get('entries', []):
                     if entry:
@@ -1592,7 +1592,7 @@ def playlist_convert():
     playlist_id = generate_file_id(url)
     
     videos_dict = {}
-    for idx, video in enumerate(playlist_info['videos'], 1):
+    for idx, video in enumerate(playlist_info.get('videos', []), 1):
         videos_dict[video['id']] = {
             'index': idx,
             'title': video['title'],
