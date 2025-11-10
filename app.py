@@ -839,12 +839,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
 
-        # Create small black bar at bottom for subtitles (video to 176x132, leaving 12px for subs)
-        # Scale to exact 176x132 with slight horizontal stretch to fill width
+        # Create small black bar at bottom for subtitles (video fills 176x132, leaving 12px for subs)
+        # Scale up and crop to fill 176x132 completely (no side black bars), then add 12px black bar at bottom
         # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
-        # Then escape colons and backslashes for FFmpeg filter syntax
+        # Then escape colons for FFmpeg filter syntax
         escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
-        video_filter = f"scale=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
+        video_filter = f"scale=176:132:force_original_aspect_ratio=increase,crop=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
 
         ffmpeg_cmd = [
             FFMPEG_PATH,
@@ -1384,7 +1384,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             convert_cmd = [
                 FFMPEG_PATH,
                 '-i', temp_video,
-                '-vf','scale=176:-2:force_original_aspect_ratio=decrease,setsar=1',
+                '-vf','scale=176:144:force_original_aspect_ratio=increase,crop=176:144,setsar=1',
                 '-vcodec', 'mpeg4',
                 '-r', quality_preset['fps'],  # FPS from preset
                 '-b:v', quality_preset['video_bitrate'],  # Video bitrate from preset
@@ -1435,7 +1435,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 simple_cmd = [
                     FFMPEG_PATH,
                     '-i', temp_video,
-                    '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1',
+                    '-vf', 'scale=176:144:force_original_aspect_ratio=increase,crop=176:144,setsar=1',
                     '-vcodec', 'mpeg4',
                     '-r', '15',
                     '-b:v', '200k',
