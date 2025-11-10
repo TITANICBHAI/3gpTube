@@ -5,13 +5,11 @@ echo "================================"
 echo "Building YouTube 3GP Converter"
 echo "================================"
 
-# Install system dependencies (FFmpeg, ImageMagick, fonts)
+# Install system dependencies (FFmpeg only)
 echo "Installing system dependencies..."
 apt-get update
 apt-get install -y --no-install-recommends \
     ffmpeg \
-    imagemagick \
-    fonts-dejavu-core \
     curl
 
 # Clean up to reduce image size
@@ -29,8 +27,7 @@ pip install --no-cache-dir -r requirements.txt
 echo "Verifying installations..."
 python --version
 ffmpeg -version | head -1
-convert -version | head -1
-pip list | grep -E "(Flask|yt-dlp|gunicorn|moviepy)"
+pip list | grep -E "(Flask|yt-dlp|gunicorn)"
 
 echo "================================"
 echo "Build completed successfully!"
