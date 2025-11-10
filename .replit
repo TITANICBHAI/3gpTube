@@ -1,4 +1,4 @@
-modules = ["python-3.11"]
+modules = ["python-3.12", "web", "bash"]
 [agent]
 expertMode = true
 
@@ -37,3 +37,7 @@ externalPort = 80
 [[ports]]
 localPort = 34305
 externalPort = 3000
+
+[[ports]]
+localPort = 42867
+externalPort = 3001
