@@ -17,9 +17,17 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 - ✓ Verified subtitle limits (45min, 500MB) are separate from main conversion (unlimited)
 
 **November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
-- ✓ Implemented English subtitle burning capability using MoviePy for YouTube-style subtitle overlays
+- ✓ Implemented English subtitle burning capability using MoviePy
+- ✓ **3GP subtitle burning**: Subtitles burned into 3GP after conversion with single-line horizontal text
+  - Optimized for feature phones (176x144 screen resolution)
+  - Font size: 10px for 176x144, 12px for 240x320
+  - Method: 'label' (single line) instead of 'caption' (multi-line)
+  - Output: {file_id}_with_subs.3gp (replaces regular 3GP)
+- ✓ **MP4 subtitle burning**: YouTube-style multi-line text (fontsize=18, method='caption')
 - ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
-- ✓ Created burn_subtitles_moviepy() with memory-conscious settings for Render constraints (threads=1, ultrafast preset)
+- ✓ Created burn_subtitles_moviepy() with is_3gp parameter for format-specific subtitle styling
+- ✓ Updated file detection in /status, /download, /history routes to handle _with_subs.3gp files
+- ✓ Updated cleanup functions to delete both regular and subtitled 3GP files
 - ✓ Integrated subtitle burning into conversion pipeline with resource limits (45 min, 500MB max when enabled)
 - ✓ Added UI checkboxes in index.html and 3gp.html with clear experimental warnings
 - ✓ Installed ImageMagick and DejaVu fonts in dev environment
@@ -68,7 +76,12 @@ Preferred communication style: Simple, everyday language.
   - File splitting capability for large files (re-encoding each part)
   - **Subtitle Burning (EXPERIMENTAL)**: MoviePy-based subtitle overlay
     - Downloads English subtitles (manual or auto-generated) via yt-dlp
-    - Burns subtitles into video with YouTube-style formatting (white text, black background)
+    - **3GP format**: Single-line horizontal text optimized for feature phones (176x144 resolution)
+      - Font size: 10px, method='label', burned after 3GP conversion
+      - Output file: {file_id}_with_subs.3gp
+    - **MP4 format**: Multi-line YouTube-style text (fontsize=18, method='caption')
+      - Burned before final output
+      - Output file: {file_id}_with_subs.mp4
     - Memory-optimized settings for Render constraints (threads=1, bufsize=2M)
     - Resource limits: max 45 minutes, 500MB file size when enabled
     - Requires ImageMagick and system fonts (DejaVu-Sans-Bold preferred)

@@ -642,10 +642,103 @@ def convert_vtt_to_srt(vtt_path):
         logger.error(f"Failed to convert VTT to SRT: {str(e)[:200]}")
         return None
 
-def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
+def convert_srt_to_ass(srt_path, ass_path, video_width=176, video_height=144):
     """
-    Burn subtitles into video using MoviePy with YouTube-style formatting.
-    Optimized for Render's resource constraints with memory-conscious settings.
+    Convert SRT subtitles to ASS format with custom styling for feature phones.
+    Single-line horizontal scrolling text optimized for tiny screens (176x144 or 240x320).
+    
+    Args:
+        srt_path: Path to SRT subtitle file
+        ass_path: Path for output ASS file
+        video_width: Video width (176 or 240)
+        video_height: Video height (144 or 320)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Determine font size based on video width
+        fontsize = 10 if video_width <= 176 else 12
+        
+        # ASS header with single-line horizontal style for feature phones
+        ass_header = f"""[Script Info]
+Title: Feature Phone Subtitles
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: {video_width}
+PlayResY: {video_height}
+Collisions: Normal
+PlayDepth: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,{fontsize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,5,5,8,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+        
+        # Read SRT file
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+        
+        # Parse SRT and convert to ASS
+        ass_events = []
+        blocks = srt_content.strip().split('\n\n')
+        
+        for block in blocks:
+            lines = block.strip().split('\n')
+            if len(lines) < 3:
+                continue
+            
+            # Parse timing (line 1 is number, line 2 is timing)
+            timing_line = lines[1]
+            if '-->' not in timing_line:
+                continue
+            
+            start_time, end_time = timing_line.split('-->')
+            start_time = start_time.strip().replace(',', '.')
+            end_time = end_time.strip().replace(',', '.')
+            
+            # Convert SRT time format (HH:MM:SS,mmm) to ASS format (H:MM:SS.cc)
+            def srt_to_ass_time(srt_time):
+                parts = srt_time.split(':')
+                if len(parts) == 3:
+                    h, m, s = parts
+                    h = str(int(h))  # Remove leading zero
+                    return f"{h}:{m}:{s[:5]}"  # Only keep 2 decimal places
+                return srt_time
+            
+            ass_start = srt_to_ass_time(start_time)
+            ass_end = srt_to_ass_time(end_time)
+            
+            # Get subtitle text (all lines after timing) - join as single line
+            subtitle_text = ' '.join(lines[2:]).replace('\n', ' ')
+            # Remove line breaks and make it single line
+            subtitle_text = subtitle_text.replace('\\N', ' ').replace('\N', ' ')
+            
+            # Create ASS event
+            ass_event = f"Dialogue: 0,{ass_start},{ass_end},Default,,0,0,0,,{subtitle_text}"
+            ass_events.append(ass_event)
+        
+        # Write ASS file
+        with open(ass_path, 'w', encoding='utf-8') as f:
+            f.write(ass_header)
+            f.write('\n'.join(ass_events))
+        
+        logger.info(f"✓ Converted SRT to ASS with single-line style: {ass_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to convert SRT to ASS: {str(e)[:200]}")
+        return False
+
+
+def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3gp=False):
+    """
+    Burn subtitles into video using MoviePy.
+    For 3GP: Single-line horizontal text optimized for feature phones (176x144)
+    For MP4: YouTube-style multi-line text
     
     IMPORTANT: Requires ImageMagick and fonts to be installed on the deployment platform.
     For Render deployment, add to build command or use environment-specific setup.
@@ -655,6 +748,7 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
         subtitle_path: Path to SRT subtitle file
         output_path: Path for output video with burned subtitles
         file_id: Unique file identifier for status updates
+        is_3gp: If True, use single-line text for feature phones
     
     Returns:
         True if successful, False otherwise
@@ -663,12 +757,13 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
     final_video = None
     
     try:
+        video_type = '3GP' if is_3gp else 'MP4'
         update_status(file_id, {
             'status': 'burning_subtitles',
-            'progress': 'Burning subtitles into video (YouTube style)... This may take a few minutes.'
+            'progress': f'Burning subtitles into {video_type} (feature phone style)... This may take a few minutes.'
         })
         
-        logger.info(f"Starting subtitle burning for {file_id}")
+        logger.info(f"Starting subtitle burning for {file_id} ({video_type})")
         
         # Try multiple font options to maximize compatibility
         font_options = [
@@ -679,28 +774,34 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
             None  # Will use MoviePy default
         ]
         
-        # Generator function for YouTube-style subtitles with memory efficiency
+        # Generator function for subtitles
         def generator(txt):
+            # For 3GP: single-line horizontal text, smaller font
+            # For MP4: multi-line text, larger font
+            fontsize = 10 if is_3gp else 18
+            
+            # Make single line for feature phones
+            if is_3gp:
+                txt = txt.replace('\n', ' ')  # Remove line breaks
+            
             for font in font_options:
                 try:
                     return TextClip(
                         txt, 
-                        font=font if font else 'Arial',  # Fallback to Arial if None
-                        fontsize=18,
+                        font=font if font else 'Arial',
+                        fontsize=fontsize,
                         color='white',
                         bg_color='black',
                         size=(None, None),
-                        method='caption',
+                        method='caption' if not is_3gp else 'label',  # label for single line
                         align='center',
                         stroke_color='black',
-                        stroke_width=2
+                        stroke_width=1 if is_3gp else 2
                     )
                 except Exception as font_error:
-                    # If this font doesn't work, try next one
                     logger.debug(f"Font {font} failed: {str(font_error)[:100]}, trying next...")
                     continue
             
-            # If all fonts fail, raise the error
             raise Exception("No compatible fonts found for subtitle rendering. Please install ImageMagick and fonts on deployment platform.")
         
         # Load video with memory-conscious settings
@@ -709,26 +810,40 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
         # Create subtitles clip
         subtitles = SubtitlesClip(subtitle_path, generator)
         
-        # Position subtitles at bottom (YouTube style)
+        # Position subtitles at bottom
         subtitles = subtitles.set_position(('center', 'bottom'))
         
         # Composite video with subtitles
         final_video = CompositeVideoClip([video, subtitles])
         
         # Write output with memory-conscious settings for Render
-        logger.info(f"Writing video with burned subtitles for {file_id}")
+        logger.info(f"Writing {video_type} with burned subtitles for {file_id}")
         
-        final_video.write_videofile(
-            output_path,
-            codec='libx264',
-            audio_codec='aac',
-            temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
-            remove_temp=True,
-            threads=1,  # Limit threads for Render constraints
-            preset='ultrafast',  # Fast encoding for resource efficiency
-            ffmpeg_params=['-bufsize', '2M'],  # Limit buffer to save memory
-            logger=None  # Suppress moviepy's verbose output
-        )
+        # Use appropriate codec for 3GP vs MP4
+        if is_3gp:
+            final_video.write_videofile(
+                output_path,
+                codec='mpeg4',
+                audio_codec='aac',
+                temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
+                remove_temp=True,
+                threads=1,
+                preset='ultrafast',
+                ffmpeg_params=['-bufsize', '2M'],
+                logger=None
+            )
+        else:
+            final_video.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
+                remove_temp=True,
+                threads=1,
+                preset='ultrafast',
+                ffmpeg_params=['-bufsize', '2M'],
+                logger=None
+            )
         
         # Clean up to free memory
         final_video.close()
@@ -1181,7 +1296,8 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 os.remove(temp_video)
                 raise Exception(f"Insufficient disk space for conversion. Downloaded video is {file_size_mb:.1f}MB but only {free_mb:.0f}MB free. Try a shorter video.")
 
-        # Handle subtitle burning if requested (only for video formats, not MP3)
+        # Download subtitles if requested (will be burned AFTER conversion for 3GP)
+        subtitle_file = None
         if burn_subtitles and ENABLE_SUBTITLE_BURNING and output_format != 'mp3':
             # Check resource limits for subtitle burning (Render constraints)
             duration_mins = duration / 60
@@ -1199,48 +1315,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 # Download English subtitles
                 subtitle_file = download_subtitles(url, file_id)
                 
-                if subtitle_file:
-                    # Burn subtitles using MoviePy
-                    temp_video_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
-                    
-                    if burn_subtitles_moviepy(temp_video, subtitle_file, temp_video_with_subs, file_id):
-                        # Replace temp_video with subtitle-burned version
-                        try:
-                            os.remove(temp_video)
-                        except Exception as e:
-                            logger.warning(f"Could not remove original temp video: {e}")
-                        
-                        temp_video = temp_video_with_subs
-                        logger.info(f"✓ Using subtitle-burned video for conversion: {temp_video}")
-                        
-                        # Update status to show subtitle burning completed
-                        update_status(file_id, {
-                            'status': 'converting',
-                            'progress': '✓ Subtitles burned successfully! Now converting to 3GP...'
-                        })
-                        
-                        # Clean up subtitle file
-                        try:
-                            os.remove(subtitle_file)
-                        except Exception as e:
-                            logger.warning(f"Could not remove subtitle file: {e}")
-                    else:
-                        logger.warning(f"Subtitle burning failed, continuing with original video")
-                        update_status(file_id, {
-                            'progress': '⚠️ Subtitle burning failed (ImageMagick/fonts may not be installed on server). Continuing with normal conversion...'
-                        })
-                        # Clean up failed subtitle burn attempt
-                        if os.path.exists(temp_video_with_subs):
-                            try:
-                                os.remove(temp_video_with_subs)
-                            except:
-                                pass
-                        if os.path.exists(subtitle_file):
-                            try:
-                                os.remove(subtitle_file)
-                            except:
-                                pass
-                else:
+                if not subtitle_file:
                     logger.info(f"No English subtitles available, proceeding without subtitle burning")
                     update_status(file_id, {
                         'progress': 'ℹ️ No English subtitles found for this video. Continuing with normal conversion...'
@@ -1372,6 +1447,42 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if not os.path.exists(output_path):
             raise Exception("Conversion failed: Output file not created")
 
+        # Burn subtitles into 3GP AFTER conversion if requested
+        if subtitle_file and output_format == '3gp':
+            output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
+            
+            if burn_subtitles_moviepy(output_path, subtitle_file, output_with_subs, file_id, is_3gp=True):
+                # Replace output_path with subtitle-burned version
+                try:
+                    os.remove(output_path)
+                except Exception as e:
+                    logger.warning(f"Could not remove original 3GP: {e}")
+                
+                output_path = output_with_subs
+                logger.info(f"✓ Subtitles burned into 3GP: {output_path}")
+                
+                update_status(file_id, {
+                    'status': 'completed',
+                    'progress': '✓ Subtitles burned successfully into 3GP!'
+                })
+            else:
+                logger.warning(f"Subtitle burning failed, using 3GP without subtitles")
+                update_status(file_id, {
+                    'progress': '⚠️ Subtitle burning failed. Using video without subtitles...'
+                })
+                # Clean up failed attempt
+                if os.path.exists(output_with_subs):
+                    try:
+                        os.remove(output_with_subs)
+                    except:
+                        pass
+            
+            # Clean up subtitle file
+            try:
+                os.remove(subtitle_file)
+            except:
+                pass
+
         final_size = os.path.getsize(output_path)
         final_size_mb = final_size / (1024 * 1024)
 
@@ -1450,15 +1561,17 @@ def cleanup_old_files():
                                     should_delete = True
 
                         if should_delete:
-                            # Delete both 3gp and mp3 files if they exist
+                            # Delete all possible file formats if they exist
+                            file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
                             file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
                             file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
-                            if os.path.exists(file_path_3gp):
-                                os.remove(file_path_3gp)
-                                deleted_count += 1
-                            if os.path.exists(file_path_mp3):
-                                os.remove(file_path_mp3)
-                                deleted_count += 1
+                            file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
+                            file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
+                            
+                            for file_path in [file_path_3gp_subs, file_path_3gp, file_path_mp3, file_path_mp4_subs, file_path_mp4]:
+                                if os.path.exists(file_path):
+                                    os.remove(file_path)
+                                    deleted_count += 1
                             
                             # Also delete any split parts for this file_id
                             for filename in os.listdir(DOWNLOAD_FOLDER):
@@ -1578,6 +1691,7 @@ def history():
                 continue
             
             # Determine file format - check all possible file types
+            file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
             file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
             file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
             file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
@@ -1598,6 +1712,11 @@ def history():
                 file_exists = True
                 file_size = os.path.getsize(file_path_mp4)
                 actual_file_path = file_path_mp4
+            elif os.path.exists(file_path_3gp_subs):
+                format_type = '3GP (with subtitles)'
+                file_exists = True
+                file_size = os.path.getsize(file_path_3gp_subs)
+                actual_file_path = file_path_3gp_subs
             elif os.path.exists(file_path_3gp):
                 format_type = '3GP'
                 file_exists = True
@@ -1734,7 +1853,10 @@ def playlist_convert():
     playlist_id = generate_file_id(url)
     
     videos_dict = {}
-    for idx, video in enumerate(playlist_info.get('videos', []), 1):
+    videos = playlist_info.get('videos') or []
+    if not isinstance(videos, list):
+        videos = []
+    for idx, video in enumerate(videos, 1):
         videos_dict[video['id']] = {
             'index': idx,
             'title': video['title'],
@@ -1783,10 +1905,19 @@ def status(file_id):
     # Get file info if file exists
     file_info = None
     if file_status.get('status') == 'completed':
+        file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
         file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
         file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
+        file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
+        file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
         
-        if os.path.exists(file_path_3gp):
+        if os.path.exists(file_path_mp4_subs):
+            file_info = get_file_info(file_path_mp4_subs)
+        elif os.path.exists(file_path_mp4):
+            file_info = get_file_info(file_path_mp4)
+        elif os.path.exists(file_path_3gp_subs):
+            file_info = get_file_info(file_path_3gp_subs)
+        elif os.path.exists(file_path_3gp):
             file_info = get_file_info(file_path_3gp)
         elif os.path.exists(file_path_mp3):
             file_info = get_file_info(file_path_mp3)
@@ -1798,6 +1929,7 @@ def download(file_id):
     # Check for all possible file types
     file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
     file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
+    file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
     file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
     file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
     
@@ -1810,6 +1942,8 @@ def download(file_id):
         return send_file(file_path_mp4_subs, as_attachment=True, download_name=f'{video_title}_with_subs.mp4')
     elif os.path.exists(file_path_mp4):
         return send_file(file_path_mp4, as_attachment=True, download_name=f'{video_title}.mp4')
+    elif os.path.exists(file_path_3gp_subs):
+        return send_file(file_path_3gp_subs, as_attachment=True, download_name=f'{video_title}_with_subs.3gp')
     elif os.path.exists(file_path_3gp):
         return send_file(file_path_3gp, as_attachment=True, download_name=f'{video_title}.3gp')
     elif os.path.exists(file_path_mp3):
