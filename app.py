@@ -1571,22 +1571,37 @@ def history():
             if file_time < cutoff_time:
                 continue
             
-            # Determine file format
+            # Determine file format - check all possible file types
             file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
             file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
+            file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
+            file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
             
             format_type = None
             file_exists = False
             file_size = 0
+            actual_file_path = None
             
-            if os.path.exists(file_path_3gp):
+            if os.path.exists(file_path_mp4_subs):
+                format_type = 'MP4 (with subtitles)'
+                file_exists = True
+                file_size = os.path.getsize(file_path_mp4_subs)
+                actual_file_path = file_path_mp4_subs
+            elif os.path.exists(file_path_mp4):
+                format_type = 'MP4'
+                file_exists = True
+                file_size = os.path.getsize(file_path_mp4)
+                actual_file_path = file_path_mp4
+            elif os.path.exists(file_path_3gp):
                 format_type = '3GP'
                 file_exists = True
                 file_size = os.path.getsize(file_path_3gp)
+                actual_file_path = file_path_3gp
             elif os.path.exists(file_path_mp3):
                 format_type = 'MP3'
                 file_exists = True
                 file_size = os.path.getsize(file_path_mp3)
+                actual_file_path = file_path_mp3
             
             # Calculate expiry time
             expiry_time = None
@@ -1774,7 +1789,9 @@ def status(file_id):
 
 @app.route('/download/<file_id>')
 def download(file_id):
-    # Check for both 3gp and mp3 files
+    # Check for all possible file types
+    file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
+    file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
     file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
     file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
     
@@ -1783,7 +1800,11 @@ def download(file_id):
     file_status = status_data.get(file_id, {})
     video_title = file_status.get('video_title', 'video')
 
-    if os.path.exists(file_path_3gp):
+    if os.path.exists(file_path_mp4_subs):
+        return send_file(file_path_mp4_subs, as_attachment=True, download_name=f'{video_title}_with_subs.mp4')
+    elif os.path.exists(file_path_mp4):
+        return send_file(file_path_mp4, as_attachment=True, download_name=f'{video_title}.mp4')
+    elif os.path.exists(file_path_3gp):
         return send_file(file_path_3gp, as_attachment=True, download_name=f'{video_title}.3gp')
     elif os.path.exists(file_path_mp3):
         return send_file(file_path_mp3, as_attachment=True, download_name=f'{video_title}.mp3')
