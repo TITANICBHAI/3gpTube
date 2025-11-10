@@ -764,7 +764,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             srt_content = f.read()
         
         # ASS header with two styles: one for bottom (line1), one for top (line2)
-        # Font size reduced to 2px (half of previous 3px), minimal gap from video edge
+        # Very small font (1.5px) positioned directly at video edge with minimal margins
         ass_header = """[Script Info]
 Title: 3GP Dual-Line Subtitles
 ScriptType: v4.00+
@@ -775,8 +775,8 @@ Collisions: Normal
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Line1,Arial,2,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,2,2,2,1
-Style: Line2,Arial,2,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,2,2,2,1
+Style: Line1,Arial,1.5,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,0,0,2,1,1,1,1
+Style: Line2,Arial,1.5,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,0,0,8,1,1,1,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
