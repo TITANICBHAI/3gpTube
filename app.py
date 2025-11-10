@@ -839,11 +839,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
         
-        # Create black bar at bottom for subtitles (shrink video to 176x120, pad to 176x144)
-        # This keeps video at full resolution but creates 24px black bar at bottom for subs
+        # Create small black bar at bottom for subtitles (video to 176x132, leaving 12px for subs)
+        # Scale to exact 176x132 with slight horizontal stretch to fill width
         # Escape the path properly for FFmpeg - replace backslashes and colons
         escaped_ass_path = ass_path.replace('\\', '\\\\').replace(':', '\\:')
-        video_filter = f"scale=176:120:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:0,setsar=1,subtitles={escaped_ass_path}"
+        video_filter = f"scale=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
         
         ffmpeg_cmd = [
             FFMPEG_PATH,
