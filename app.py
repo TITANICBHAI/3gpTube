@@ -1015,7 +1015,10 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 raise Exception(f"⚠️ YouTube bot detection activated. Wait 10-15 minutes before trying again.{cookies_help}")
 
             if 'duration' in error_lower:
-                raise Exception(f"Video exceeds {MAX_VIDEO_DURATION/3600:.0f}-hour limit")
+                if MAX_VIDEO_DURATION is not None:
+                    raise Exception(f"Video exceeds {MAX_VIDEO_DURATION/3600:.0f}-hour limit")
+                else:
+                    raise Exception("Video duration error during download")
             if 'filesize' in error_msg.lower() or 'too large' in error_msg.lower():
                 raise Exception(f"Video file too large (server limit: 500MB)")
             if '429' in error_msg or 'too many requests' in error_msg.lower():
@@ -1042,7 +1045,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             raise Exception("Download failed: Video file not created")
 
         duration = get_video_duration(temp_video)
-        if duration > MAX_VIDEO_DURATION:
+        if MAX_VIDEO_DURATION is not None and duration > MAX_VIDEO_DURATION:
             os.remove(temp_video)
             raise Exception(f"Video is {duration/3600:.1f} hours long. Maximum allowed is {MAX_VIDEO_DURATION/3600:.0f} hours.")
 
