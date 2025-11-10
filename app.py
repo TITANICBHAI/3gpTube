@@ -841,8 +841,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         # Create small black bar at bottom for subtitles (video to 176x132, leaving 12px for subs)
         # Scale to exact 176x132 with slight horizontal stretch to fill width
-        # Escape the path properly for FFmpeg on Linux - only escape colons
-        escaped_ass_path = ass_path.replace(':', '\\:')
+        # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
+        # Then escape colons and backslashes for FFmpeg filter syntax
+        escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
         video_filter = f"scale=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
 
         ffmpeg_cmd = [
