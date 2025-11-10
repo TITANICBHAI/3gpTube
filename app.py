@@ -515,10 +515,14 @@ def download_subtitles(url, file_id):
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 30,
-            'retries': 3,
+            'retries': 5,
+            # 2025 anti-throttling/anti-bot measures
+            'sleep_interval': 2,
+            'max_sleep_interval': 5,
+            'http_chunk_size': 2097152,  # 2MB chunks (mimics YouTube app)
         }
         
-        # Add cookies if available for better subtitle access (helps avoid rate limits)
+        # Add cookies if available for better subtitle access
         if has_cookies():
             ydl_opts['cookiefile'] = COOKIES_FILE
         
