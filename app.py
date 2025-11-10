@@ -1213,6 +1213,12 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                         temp_video = temp_video_with_subs
                         logger.info(f"✓ Using subtitle-burned video for conversion: {temp_video}")
                         
+                        # Update status to show subtitle burning completed
+                        update_status(file_id, {
+                            'status': 'converting',
+                            'progress': '✓ Subtitles burned successfully! Now converting to 3GP...'
+                        })
+                        
                         # Clean up subtitle file
                         try:
                             os.remove(subtitle_file)
