@@ -3,7 +3,7 @@
 {% block title %}Conversion Status{% endblock %}
 
 {% block meta %}
-{% if file_status.status == 'downloading' or file_status.status == 'converting' %}
+{% if file_status.status == 'downloading' or file_status.status == 'converting' or file_status.status == 'burning_subtitles' %}
 <meta http-equiv="refresh" content="30">
 {% endif %}
 {% endblock %}
@@ -11,7 +11,7 @@
 {% block content %}
 <h1>Conversion Status</h1>
 
-{% if file_status.status == 'downloading' or file_status.status == 'converting' %}
+{% if file_status.status == 'downloading' or file_status.status == 'converting' or file_status.status == 'burning_subtitles' %}
 <div class="status">
 <p class="center"><strong>[...] PROCESSING YOUR VIDEO...</strong></p>
 <p class="center" style="font-size: 16px; font-weight: bold;">Please Wait</p>
