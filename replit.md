@@ -16,26 +16,24 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 - ✓ Fixed LSP errors in playlist code (defensive None checking)
 - ✓ Verified subtitle limits (45min, 500MB) are separate from main conversion (unlimited)
 
-**November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
-- ✓ Implemented English subtitle burning capability
+**November 10, 2025 - Subtitle Burning Feature (3GP only, EXPERIMENTAL)**
+- ✓ Implemented English subtitle burning capability for 3GP videos only
 - ✓ **3GP subtitle burning**: FFmpeg-based dual-line subtitles using ASS format
-  - Keeps video at exact 176x144 resolution with same encoding/format as non-subtitle version
-  - Uses FFmpeg's ASS subtitle filter (same codec: mpeg4, audio copy)
-  - Font size: 10px for compact display on feature phones
+  - Uses IDENTICAL encoding parameters as original 3GP conversion (bitrate, fps, GOP, trellis, etc.)
+  - Combines video filters: scale/pad THEN ass subtitle filter
+  - Font size: 3px for minimal interference with video content
   - Line 1 positioned at BOTTOM center (Alignment=2, MarginV=5)
   - Line 2 (if exists) positioned at TOP center (Alignment=8, MarginV=5)
   - Preserves YouTube's line breaks - different speakers get different lines
   - Output: {file_id}_with_subs.3gp (replaces regular 3GP)
-  - Fixed display size issue: videos now display at same size with or without subtitles
-- ✓ **MP4 subtitle burning**: MoviePy-based YouTube-style multi-line text (fontsize=18, preserves line breaks)
+  - FIXED: Videos with subtitles now display at exact same size as non-subtitle versions
+- ✓ Removed MoviePy dependency completely - FFmpeg only
 - ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
-- ✓ Created burn_subtitles_ffmpeg_3gp() for 3GP using FFmpeg ASS filter
-- ✓ Created burn_subtitles_moviepy() for MP4 format-specific subtitle styling
+- ✓ Created burn_subtitles_ffmpeg_3gp() with quality_preset parameter for exact encoding match
 - ✓ Updated file detection in /status, /download, /history routes to handle _with_subs.3gp files
 - ✓ Updated cleanup functions to delete both regular and subtitled 3GP files
 - ✓ Integrated subtitle burning into conversion pipeline with resource limits (45 min, 500MB max when enabled)
 - ✓ Added UI checkboxes in index.html and 3gp.html with clear experimental warnings
-- ✓ Installed ImageMagick and DejaVu fonts for MP4 subtitle burning
 - ✓ Implemented graceful degradation: subtitle burning failure continues normal conversion with status messages
 
 **Earlier Changes**
