@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["ffmpeg-full", "imagemagickBig"]
+packages = ["ffmpeg-full", "imagemagickBig", "imagemagick", "dejavu_fonts"]
 
 [workflows]
 runButton = "Project"

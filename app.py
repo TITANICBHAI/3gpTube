@@ -358,7 +358,7 @@ def extract_playlist_info(url):
         logger.error(f"Error extracting playlist: {e}")
     return {'is_playlist': False}
 
-def process_playlist(playlist_id, url, output_format, quality):
+def process_playlist(playlist_id, url, output_format, quality, burn_subtitles=False):
     """Background thread function to process all videos in a playlist"""
     try:
         status = get_playlist_status()
@@ -374,7 +374,7 @@ def process_playlist(playlist_id, url, output_format, quality):
                 file_id = generate_file_id(video_info['url'])
                 video_info['file_id'] = file_id
                 
-                download_and_convert(video_info['url'], file_id, output_format, quality)
+                download_and_convert(video_info['url'], file_id, output_format, quality, burn_subtitles)
                 
                 file_status = get_status().get(file_id, {})
                 if file_status.get('status') == 'completed':
@@ -541,6 +541,9 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
     Burn subtitles into video using MoviePy with YouTube-style formatting.
     Optimized for Render's resource constraints with memory-conscious settings.
     
+    IMPORTANT: Requires ImageMagick and fonts to be installed on the deployment platform.
+    For Render deployment, add to build command or use environment-specific setup.
+    
     Args:
         video_path: Path to input video file
         subtitle_path: Path to SRT subtitle file
@@ -550,6 +553,9 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
     Returns:
         True if successful, False otherwise
     """
+    video = None
+    final_video = None
+    
     try:
         update_status(file_id, {
             'status': 'burning_subtitles',
@@ -558,20 +564,38 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
         
         logger.info(f"Starting subtitle burning for {file_id}")
         
+        # Try multiple font options to maximize compatibility
+        font_options = [
+            'DejaVu-Sans-Bold',  # Preferred (if dejavu_fonts installed)
+            'Arial-Bold',  # Common system font
+            'Helvetica-Bold',  # macOS/Unix common font
+            'FreeSans-Bold',  # Linux free font
+            None  # Will use MoviePy default
+        ]
+        
         # Generator function for YouTube-style subtitles with memory efficiency
         def generator(txt):
-            return TextClip(
-                txt, 
-                font='Arial-Bold',
-                fontsize=18,
-                color='white',
-                bg_color='black',
-                size=(None, None),
-                method='caption',
-                align='center',
-                stroke_color='black',
-                stroke_width=2
-            )
+            for font in font_options:
+                try:
+                    return TextClip(
+                        txt, 
+                        font=font if font else 'Arial',  # Fallback to Arial if None
+                        fontsize=18,
+                        color='white',
+                        bg_color='black',
+                        size=(None, None),
+                        method='caption',
+                        align='center',
+                        stroke_color='black',
+                        stroke_width=2
+                    )
+                except Exception as font_error:
+                    # If this font doesn't work, try next one
+                    logger.debug(f"Font {font} failed: {str(font_error)[:100]}, trying next...")
+                    continue
+            
+            # If all fonts fail, raise the error
+            raise Exception("No compatible fonts found for subtitle rendering. Please install ImageMagick and fonts on deployment platform.")
         
         # Load video with memory-conscious settings
         video = VideoFileClip(video_path)
@@ -609,13 +633,18 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
         return True
         
     except Exception as e:
-        logger.error(f"Subtitle burning failed for {file_id}: {str(e)[:200]}")
+        error_msg = str(e)[:300]
+        logger.error(f"Subtitle burning failed for {file_id}: {error_msg}")
+        
+        # Provide helpful error message if it's a font/ImageMagick issue
+        if 'imagemagick' in error_msg.lower() or 'font' in error_msg.lower() or 'magick' in error_msg.lower():
+            logger.error("⚠️ ImageMagick or fonts not installed. Subtitle burning requires ImageMagick and system fonts on deployment platform.")
         
         # Clean up on error
         try:
-            if 'video' in locals() and video:
+            if video:
                 video.close()
-            if 'final_video' in locals() and final_video:
+            if final_video:
                 final_video.close()
             gc.collect()
         except:
@@ -1067,6 +1096,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                             logger.warning(f"Could not remove subtitle file: {e}")
                     else:
                         logger.warning(f"Subtitle burning failed, continuing with original video")
+                        update_status(file_id, {
+                            'progress': '⚠️ Subtitle burning failed (ImageMagick/fonts may not be installed on server). Continuing with normal conversion...'
+                        })
                         # Clean up failed subtitle burn attempt
                         if os.path.exists(temp_video_with_subs):
                             try:
@@ -1080,6 +1112,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                                 pass
                 else:
                     logger.info(f"No English subtitles available, proceeding without subtitle burning")
+                    update_status(file_id, {
+                        'progress': 'ℹ️ No English subtitles found for this video. Continuing with normal conversion...'
+                    })
 
         est_time = max(1, int(duration / 60))
 
@@ -1469,6 +1504,9 @@ def convert():
         quality = request.form.get('mp3_quality', 'auto').strip()
     else:
         quality = request.form.get('video_quality', 'auto').strip()
+    
+    # Get subtitle burning option (only applicable for video formats)
+    burn_subtitles = request.form.get('burn_subtitles', 'off') == 'on'
 
     if not url:
         flash('Please enter a YouTube URL')
@@ -1493,15 +1531,15 @@ def convert():
                 playlist_url = f'https://www.youtube.com/playlist?list={playlist_id}'
                 playlist_info = extract_playlist_info(playlist_url)
                 if playlist_info.get('is_playlist'):
-                    return redirect(url_for('playlist_confirm', url=playlist_url, format=output_format, quality=quality))
+                    return redirect(url_for('playlist_confirm', url=playlist_url, format=output_format, quality=quality, burn_subtitles=burn_subtitles))
         else:
             playlist_info = extract_playlist_info(url)
             if playlist_info.get('is_playlist'):
-                return redirect(url_for('playlist_confirm', url=url, format=output_format, quality=quality))
+                return redirect(url_for('playlist_confirm', url=url, format=output_format, quality=quality, burn_subtitles=burn_subtitles))
 
     file_id = generate_file_id(url)
 
-    thread = threading.Thread(target=download_and_convert, args=(url, file_id, output_format, quality))
+    thread = threading.Thread(target=download_and_convert, args=(url, file_id, output_format, quality, burn_subtitles))
     thread.daemon = True
     thread.start()
 
@@ -1512,6 +1550,7 @@ def playlist_confirm():
     url = request.args.get('url', '')
     output_format = request.args.get('format', '3gp')
     quality = request.args.get('quality', 'auto')
+    burn_subtitles = request.args.get('burn_subtitles', 'False') == 'True'
     
     if not url:
         flash('No playlist URL provided')
@@ -1527,6 +1566,7 @@ def playlist_confirm():
                           url=url, 
                           output_format=output_format,
                           quality=quality,
+                          burn_subtitles=burn_subtitles,
                           mp3_presets=MP3_QUALITY_PRESETS,
                           video_presets=VIDEO_QUALITY_PRESETS)
 
@@ -1535,6 +1575,7 @@ def playlist_convert():
     url = request.form.get('url', '').strip()
     output_format = request.form.get('format', '3gp').strip()
     quality = request.form.get('quality', 'auto').strip()
+    burn_subtitles = request.form.get('burn_subtitles', 'off') == 'on'
     
     if not url:
         flash('No playlist URL provided')
@@ -1564,6 +1605,7 @@ def playlist_convert():
         'url': url,
         'format': output_format,
         'quality': quality,
+        'burn_subtitles': burn_subtitles,
         'status': 'processing',
         'total_videos': playlist_info['video_count'],
         'completed_count': 0,
@@ -1571,7 +1613,7 @@ def playlist_convert():
         'videos': videos_dict
     })
     
-    thread = threading.Thread(target=process_playlist, args=(playlist_id, url, output_format, quality))
+    thread = threading.Thread(target=process_playlist, args=(playlist_id, url, output_format, quality, burn_subtitles))
     thread.daemon = True
     thread.start()
     

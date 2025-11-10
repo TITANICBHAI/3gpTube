@@ -20,6 +20,15 @@
 {% endfor %}
 </select>
 
+<p><strong>Subtitle Options (EXPERIMENTAL):</strong></p>
+<div style="margin-bottom: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+<label style="display: flex; align-items: center; cursor: pointer;">
+<input type="checkbox" name="burn_subtitles" value="on" style="margin-right: 8px;">
+<span>Burn English subtitles into video (YouTube style)</span>
+</label>
+<p style="font-size: 11px; color: #856404; margin: 5px 0 0 0;"><strong>⚠️ Note:</strong> Requires ImageMagick on server. May not work on all deployments.<br>• Only for videos under 45 minutes and 500MB<br>• Uses auto-generated or manual English subtitles<br>• Processing may take longer<br>• Feature will fail gracefully if dependencies missing</p>
+</div>
+
 <button type="submit">Start Conversion</button>
 </form>
 
