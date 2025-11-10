@@ -470,6 +470,8 @@ def validate_cookies():
 
             lines = content.strip().split('\n')
             has_youtube_cookies = False
+            cookie_count = 0
+            found_session_cookies = []
 
             for line in lines:
                 if line.startswith('#') or not line.strip():
@@ -482,14 +484,22 @@ def validate_cookies():
 
                     if 'youtube.com' in domain.lower():
                         has_youtube_cookies = True
+                        cookie_count += 1
+                        
+                        # Check for any session/auth related cookies (more flexible)
+                        if any(key in cookie_name for key in ['PSID', 'LOGIN', 'SAPISID', 'SSID', 'HSID', 'SID', 'APISID']):
+                            found_session_cookies.append(cookie_name)
 
-                        if cookie_name in ['LOGIN_INFO', '__Secure-1PSID', '__Secure-3PSID']:
-                            return True, "Valid YouTube cookies with authentication token found"
-
-            if has_youtube_cookies:
-                return False, "YouTube cookies found but missing LOGIN_INFO or session tokens. Please export cookies while logged into YouTube, or from a fresh youtube.com visit."
+            if has_youtube_cookies and cookie_count >= 3:
+                if len(found_session_cookies) > 0:
+                    return True, f"✓ Valid YouTube cookies found ({cookie_count} total, {len(found_session_cookies)} session cookies)"
+                else:
+                    # Accept even without explicit session cookies if we have enough cookies
+                    return True, f"✓ YouTube cookies accepted ({cookie_count} cookies found)"
+            elif has_youtube_cookies:
+                return False, f"YouTube cookies found but only {cookie_count} cookie(s). Export cookies from youtube.com while logged in."
             else:
-                return False, "No YouTube cookies detected in file"
+                return False, "No YouTube cookies detected in file. Make sure to export from youtube.com"
 
     except Exception as e:
         return False, f"Error reading cookies: {str(e)}"
@@ -643,22 +653,23 @@ def convert_vtt_to_srt(vtt_path):
 def convert_srt_to_ass(srt_path, ass_path, video_width=176, video_height=144):
     """
     Convert SRT subtitles to ASS format with custom styling for feature phones.
-    Single-line horizontal scrolling text optimized for tiny screens (176x144 or 240x320).
+    Single-line horizontal scrolling text optimized for feature phone screens (176x144).
 
     Args:
         srt_path: Path to SRT subtitle file
         ass_path: Path for output ASS file
-        video_width: Video width (176 or 240)
-        video_height: Video height (144 or 320)
+        video_width: Video width (default 176)
+        video_height: Video height (default 144)
 
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Determine font size based on video width
-        fontsize = 10 if video_width <= 176 else 12
+        # Large, bold font for exceptional clarity on 240x320 screen
+        fontsize = 16
 
-        # ASS header with single-line horizontal style for feature phones
+        # ASS header with clear, readable style for feature phones
+        # Font: 16px bold white text with thick black outline and shadow for maximum visibility
         ass_header = f"""[Script Info]
 Title: Feature Phone Subtitles
 ScriptType: v4.00+
@@ -670,7 +681,7 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{fontsize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,5,5,8,1
+Style: Default,Arial,{fontsize},&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,1,3,2,2,5,5,8,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -764,7 +775,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             srt_content = f.read()
 
         # ASS header with two styles: one for bottom (line1), one for top (line2)
-        # Font size 6px with proper outline and shadow for visibility, zero margins for direct positioning
+        # Font size 14px bold with thick outline and shadow for exceptional clarity on 240x320
         ass_header = """[Script Info]
 Title: 3GP Dual-Line Subtitles
 ScriptType: v4.00+
@@ -775,8 +786,8 @@ Collisions: Normal
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Line1,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,0,0,0,1
-Style: Line2,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,0,0,0,1
+Style: Line1,Arial,14,&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,1,3,2,2,0,0,0,1
+Style: Line2,Arial,14,&H00FFFFFF,&H000000FF,&H00000000,&HC0000000,-1,0,0,0,100,100,0,0,1,3,2,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -839,12 +850,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
 
-        # Create small black bar at bottom for subtitles (video fills 176x136, leaving 8px for subs)
-        # Scale up and crop to fill 176x136 completely (no side black bars), then add 8px black bar at bottom
+        # Create small black bar at bottom for subtitles (video fills 240x312, leaving 8px for subs)
+        # Scale up and crop to fill 240x312 completely (no side black bars), then add 8px black bar at bottom
         # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
         # Then escape colons for FFmpeg filter syntax
         escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
-        video_filter = f"scale=176:136:force_original_aspect_ratio=increase,crop=176:136,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
+        video_filter = f"scale=176:136:force_original_aspect_ratio=decrease,crop=176:136,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
 
         ffmpeg_cmd = [
             FFMPEG_PATH,
@@ -1384,7 +1395,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             convert_cmd = [
                 FFMPEG_PATH,
                 '-i', temp_video,
-                '-vf','scale=176:144:force_original_aspect_ratio=increase,crop=176:144,setsar=1',
+                '-vf','scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
                 '-vcodec', 'mpeg4',
                 '-r', quality_preset['fps'],  # FPS from preset
                 '-b:v', quality_preset['video_bitrate'],  # Video bitrate from preset
@@ -1435,7 +1446,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 simple_cmd = [
                     FFMPEG_PATH,
                     '-i', temp_video,
-                    '-vf', 'scale=176:144:force_original_aspect_ratio=increase,crop=176:144,setsar=1',
+                    '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
                     '-vcodec', 'mpeg4',
                     '-r', '15',
                     '-b:v', '200k',
@@ -2100,7 +2111,7 @@ def split_media_file(file_path, num_parts, file_id):
                 '-i', file_path,
                 '-t', str(part_duration),
                 '-c:v', 'h263',
-                '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1',
+                '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
                 '-b:v', '64k',
                 '-r', '15',
                 '-g', '15',
