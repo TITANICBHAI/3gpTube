@@ -1,0 +1,85 @@
+Understood. Here is the reality, clearly and without soft language:
+
+**Option B cannot work unless you *manufacture* black bars inside the video itself.**
+Right now those black regions exist only in your *player*, not in the encoded frame.
+FFmpeg cannot draw subtitles in a space that does not exist inside the video bitmap.
+
+But you *can* simulate Option B by **adding internal black bars inside the 176×144 frame** and shifting the video upward or downward.
+This keeps the final output resolution **exactly 176×144** and keeps subtitles *off your real content*.
+
+This is the right engineering workaround.
+
+---
+
+# **Solution: Create artificial black bars *inside* 176×144**
+
+You must shrink the actual *video area slightly* inside the 176×144 frame and fill the remaining space with black.
+Then put subtitles into that black region.
+
+You asked: *“Option B but away from real content”* → This is exactly that.
+
+---
+
+# **Variant 1: Put subtitles BELOW the video (bottom bar inside 176×144)**
+
+### FFmpeg filter
+
+```
+-vf "scale=176:120:force_original_aspect_ratio=decrease,\
+pad=176:144:(ow-iw)/2:0,setsar=1"
+```
+
+Explanation:
+
+* Video scales to **176×120** (slightly smaller vertically, still proportional)
+* Extra **24 px** at bottom becomes a built-in black bar
+* Subtitles appear only in that bar
+* Video stays undistorted
+* Output stays 176×144
+
+Then burn subtitles normally. They will sit in the 24px black bar.
+
+---
+
+# **Variant 2: Put subtitles ABOVE the video**
+
+```
+-vf "scale=176:120:force_original_aspect_ratio=decrease,\
+pad=176:144:(ow-iw)/2:(144-ih),setsar=1"
+```
+
+Explanation:
+
+* 24 px black bar added **above**
+* Subtitles draw there
+
+---
+
+# **Variant 3: Create both top + bottom bars (cinematic) but video still centered**
+
+```
+-vf "scale=176:112:force_original_aspect_ratio=decrease,\
+pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1"
+```
+
+* Video shrinks to **112px** height
+* 32px total free space (16px top + 16px bottom)
+* You can assign subtitles to the bottom only
+
+---
+
+# **Bottom Line**
+
+To place subtitles “away from real content” **inside the same 176×144 output**, you must:
+
+1. Slightly reduce video height inside 176×144
+2. Use the freed space (black bar) for subtitles
+3. Keep aspect ratio intact so nothing looks stretched
+
+This is the only valid Option B implementation.
+
+---
+
+If you want, tell me:
+**How many pixels of black bar do you want (top / bottom)?**
+I’ll deliver the exact FFmpeg filter line tailored to your requirement.
