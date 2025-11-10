@@ -18,13 +18,13 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 **November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
 - ✓ Implemented English subtitle burning capability using MoviePy
-- ✓ **3GP subtitle burning**: Split 2-line subtitles with line 1 below, line 2 above video
-  - Optimized for Nokia 5310 (240x320 screen) with 176x144 video centered
-  - Canvas expanded to 240x320 (full screen, video centered vertically)
-  - Font size: 12px for readability
-  - First line positioned BELOW video at Y=250 (primary position)
-  - Second line (if exists) positioned ABOVE video at Y=50
-  - Video centered at Y=88 (88px gap top and bottom for subtitles)
+- ✓ **3GP subtitle burning**: Split 2-line subtitles overlaid directly on video
+  - Keeps video at original 176x144 resolution (no canvas expansion)
+  - Font size: 10px for compact display
+  - Subtitle width: 170px to fit within 176px video width
+  - First line positioned at BOTTOM edge (Y=129, bottom margin)
+  - Second line (if exists) positioned at TOP edge (Y=2, top margin)
+  - Subtitles overlay directly on video content with black background
   - Preserves YouTube's line breaks - different speakers get different lines
   - Output: {file_id}_with_subs.3gp (replaces regular 3GP)
 - ✓ **MP4 subtitle burning**: YouTube-style multi-line text (fontsize=18, preserves line breaks)

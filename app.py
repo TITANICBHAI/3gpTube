@@ -737,7 +737,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3gp=False):
     """
     Burn subtitles into video using MoviePy.
-    For 3GP: Expand canvas to 240x240 and position subtitles BELOW 176x144 video
+    For 3GP: Keep video at 176x144 and overlay subtitles at top/bottom edges
     For MP4: YouTube-style multi-line text
     
     IMPORTANT: Requires ImageMagick and fonts to be installed on the deployment platform.
@@ -748,7 +748,7 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         subtitle_path: Path to SRT subtitle file
         output_path: Path for output video with burned subtitles
         file_id: Unique file identifier for status updates
-        is_3gp: If True, expand canvas and position subs below video
+        is_3gp: If True, overlay subtitles at top and bottom of video (keeps 176x144)
     
     Returns:
         True if successful, False otherwise
@@ -816,11 +816,11 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
             
             raise Exception("No compatible fonts found for subtitle rendering. Please install ImageMagick and fonts on deployment platform.")
         
-        # Generator for first line only (goes below video)
+        # Generator for first line only (goes at bottom of video)
         def generator_line1(txt):
             lines = txt.split('\n')
             line1 = lines[0] if lines else txt
-            fontsize = 12
+            fontsize = 10
             
             for font in font_options:
                 try:
@@ -830,7 +830,7 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                         fontsize=fontsize,
                         color='white',
                         bg_color='black',
-                        size=(230, None),
+                        size=(170, None),
                         method='caption',
                         align='center',
                         stroke_color='black',
@@ -840,18 +840,18 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                     continue
             raise Exception("No compatible fonts found for subtitle rendering.")
         
-        # Generator for second line only (goes above video)
+        # Generator for second line only (goes at top of video)
         def generator_line2(txt):
             lines = txt.split('\n')
             line2 = lines[1] if len(lines) > 1 else ''
-            fontsize = 12
+            fontsize = 10
             
             if not line2:
                 # Return transparent clip if no second line (use single space to avoid TextClip error)
                 for font in font_options:
                     try:
                         return TextClip(
-                            ' ',  # Single space instead of empty string
+                            ' ',
                             font=font if font else 'Arial',
                             fontsize=1,
                             color='black',
@@ -860,7 +860,6 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                         ).set_opacity(0)
                     except:
                         continue
-                # Fallback: return minimal transparent TextClip
                 return TextClip(' ', fontsize=1, color='black').set_opacity(0)
             
             for font in font_options:
@@ -871,7 +870,7 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                         fontsize=fontsize,
                         color='white',
                         bg_color='black',
-                        size=(230, None),
+                        size=(170, None),
                         method='caption',
                         align='center',
                         stroke_color='black',
@@ -885,38 +884,23 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         video = VideoFileClip(video_path)
         
         # Create composite video with subtitles
-        # For 3GP: Expand canvas to fit subtitles above AND below video
-        # Nokia 5310 screen is 240x320, video is 176x144
+        # For 3GP: Keep video at 176x144, overlay subtitles at top and bottom
         if is_3gp:
-            from moviepy.video.VideoClip import ColorClip
-            
-            # Create two subtitle tracks: line 1 (below) and line 2 (above)
+            # Create two subtitle tracks: line 1 (bottom) and line 2 (top)
             subtitles_line1 = SubtitlesClip(subtitle_path, generator_line1)
             subtitles_line2 = SubtitlesClip(subtitle_path, generator_line2)
             
-            # Create full-screen canvas (240 wide x 320 tall) with black background
-            # Video is 176x144, centered vertically leaves ~88px gaps above and below
-            canvas_width = 240
-            canvas_height = 320
+            # Position line 1 at BOTTOM of video (primary position)
+            # Place it at bottom edge with small margin
+            subtitles_line1_positioned = subtitles_line1.set_position(('center', video.h - 15))
             
-            # Create black background
-            background = ColorClip(size=(canvas_width, canvas_height), color=(0, 0, 0), duration=video.duration)
+            # Position line 2 at TOP of video (if it exists)
+            # Place it at top edge with small margin
+            subtitles_line2_positioned = subtitles_line2.set_position(('center', 2))
             
-            # Center video vertically: (320-144)/2 = 88px from top
-            video_y_pos = (canvas_height - video.h) // 2
-            video_positioned = video.set_position(((canvas_width - video.w) // 2, video_y_pos))
-            
-            # Position line 1 BELOW video (primary position)
-            # Video ends at ~88+144=232px, bottom gap goes to 320px
-            # Put subtitle at Y=250 (leaving margins)
-            subtitles_line1_positioned = subtitles_line1.set_position(('center', 250))
-            
-            # Position line 2 ABOVE video (if it exists)
-            # Top gap is ~88px, put subtitle at Y=50 (leaving margins)
-            subtitles_line2_positioned = subtitles_line2.set_position(('center', 50))
-            
-            # Composite: background + video + line1 (below) + line2 (above)
-            final_video = CompositeVideoClip([background, video_positioned, subtitles_line1_positioned, subtitles_line2_positioned])
+            # Composite: video + line1 (bottom) + line2 (top)
+            # No canvas expansion - keeps original 176x144 resolution
+            final_video = CompositeVideoClip([video, subtitles_line1_positioned, subtitles_line2_positioned])
         else:
             # For MP4: Use standard multi-line subtitles at bottom
             subtitles = SubtitlesClip(subtitle_path, generator)
