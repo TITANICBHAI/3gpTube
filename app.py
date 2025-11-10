@@ -840,8 +840,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         gop_size = fps_num * 10
         
         # Use EXACT same FFmpeg parameters as original conversion
-        # Combine filters: scale/pad THEN ass (ass must be last)
-        video_filter = f"scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1,ass='{ass_path}'"
+        # Combine filters: scale/pad THEN subtitles (subtitles must be last)
+        # Escape the path properly for FFmpeg - replace backslashes and colons
+        escaped_ass_path = ass_path.replace('\\', '\\\\').replace(':', '\\:')
+        video_filter = f"scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1,subtitles={escaped_ass_path}"
         
         ffmpeg_cmd = [
             FFMPEG_PATH,
