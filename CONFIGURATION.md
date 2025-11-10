@@ -61,11 +61,11 @@ video_filter = f"scale=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_p
 
 ### 1.3 Subtitle Font Styling
 
-**Location:** Lines 778-779 in `app.py`
+**Location:** Lines 781-782 in `app.py`
 
 **Current ASS Style Configuration:**
 ```
-Style: Line1,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,2,2,2,1
+Style: Line1,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,0,0,0,1
 ```
 
 **Parameter Breakdown:**
@@ -82,7 +82,7 @@ Style: Line1,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,10
 | 18 | Outline | `1` | Outline thickness | 0=none, 1=thin, 2=thick |
 | 19 | Shadow | `1` | Shadow offset | 0=none, 1=small, 2=large |
 | 20 | Alignment | `2` | Bottom center | See alignment table below |
-| 21-23 | MarginL, MarginR, MarginV | `2,2,2` | Left, Right, Bottom margins (pixels) | Increase to move text inward |
+| 21-23 | MarginL, MarginR, MarginV | `0,0,0` | Left, Right, Bottom margins (pixels) | Increase to add spacing from edges |
 
 **Alignment Codes:**
 ```
@@ -95,27 +95,27 @@ Style: Line1,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,10
 
 1. **Make subtitles bigger:**
    ```
-   Line 778: Change Arial,6 to Arial,8
+   Line 781: Change Arial,6 to Arial,8
    ```
 
 2. **Make subtitles smaller:**
    ```
-   Line 778: Change Arial,6 to Arial,4
+   Line 781: Change Arial,6 to Arial,4
    ```
 
 3. **Thicker outline for better readability:**
    ```
-   Line 778: Change ,1,1,1, to ,2,2,2,
+   Line 781: Change ,1,1,1, to ,2,2,2,
    ```
 
-4. **Move subtitles higher (more margin from bottom):**
+4. **Move subtitles away from bottom edge (add margin):**
    ```
-   Line 778: Change ,2,2,2,1 to ,2,2,5,1
+   Line 781: Change ,0,0,0,1 to ,0,0,3,1
    ```
 
 5. **Remove bold:**
    ```
-   Line 778: Change ,-1,0,0,0, to ,0,0,0,0,
+   Line 781: Change ,-1,0,0,0, to ,0,0,0,0,
    ```
 
 ### 1.4 Dual-Line Subtitle Support
@@ -124,9 +124,9 @@ The system supports two subtitle lines:
 - **Line1:** Bottom line (most important text)
 - **Line2:** Top line (appears above Line1 if SRT has 2 lines)
 
-**Line2 Configuration (Line 779):**
+**Line2 Configuration (Line 782):**
 ```
-Style: Line2,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,2,2,2,1
+Style: Line2,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,0,0,0,1
 ```
 - Same as Line1, but alignment is `8` (top center within subtitle area)
 
@@ -712,8 +712,9 @@ MAX_CONCURRENT_DOWNLOADS = 3  # Allow 3 at once
 
 | Want to... | Change this | Line | Example |
 |------------|-------------|------|---------|
-| Make subtitles bigger | Font size | 778 | `Arial,6` → `Arial,8` |
-| Make subtitles smaller | Font size | 778 | `Arial,6` → `Arial,4` |
+| Make subtitles bigger | Font size | 781 | `Arial,6` → `Arial,8` |
+| Make subtitles smaller | Font size | 781 | `Arial,6` → `Arial,4` |
+| Add space between video and subs | Vertical margin | 781 | `,0,0,0,1` → `,0,0,3,1` |
 | More space for subs | Video height | 846 | `scale=176:132` → `scale=176:128` |
 | Less space for subs | Video height | 846 | `scale=176:132` → `scale=176:136` |
 | Better video quality | video_bitrate | 125 | `'200k'` → `'300k'` |
@@ -757,13 +758,13 @@ video_filter = f"scale=176:132,pad=176:144:0:12,setsar=1,subtitles={escaped_ass_
 - Check logs: Look for "FFmpeg subtitle burning failed"
 
 **Problem: Subtitles too small to read**
-- Line 778: Increase font size (6 → 8 or 10)
-- Line 778: Increase outline (,1,1,1, → ,2,2,2,)
+- Line 781: Increase font size (6 → 8 or 10)
+- Line 781: Increase outline (,1,1,1, → ,2,2,2,)
 - Line 846: Increase black bar size (132 → 128)
 
-**Problem: Subtitles overlap video**
-- Line 846: Decrease video height (132 → 130)
-- Line 778: Reduce margins (,2,2,2, → ,1,1,1,)
+**Problem: Subtitles too close to video edge**
+- Line 781: Add vertical margin (,0,0,0,1 → ,0,0,2,1)
+- This creates space between video and subtitle text
 
 #### Video Quality Problems
 
@@ -852,10 +853,10 @@ video_filter = f"scale=176:132,pad=176:144:0:12,setsar=1,subtitles={escaped_ass_
 
 | Setting | Line | What to Edit |
 |---------|------|--------------|
-| ASS header | 768-783 | Subtitle format definition |
-| Line1 style (bottom) | 778 | Font, size, color, margins |
-| Line2 style (top) | 779 | Font, size, color, margins |
-| PlayResX/Y | 772-773 | Subtitle coordinate system |
+| ASS header | 771-786 | Subtitle format definition |
+| Line1 style (bottom) | 781 | Font, size, color, margins |
+| Line2 style (top) | 782 | Font, size, color, margins |
+| PlayResX/Y | 775-776 | Subtitle coordinate system |
 | Video filter | 846 | Video scaling and black bar |
 | FFmpeg subtitle command | 848-873 | Complete encoding command |
 
