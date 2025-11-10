@@ -839,12 +839,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
 
-        # Create small black bar at bottom for subtitles (video fills 176x132, leaving 12px for subs)
-        # Scale up and crop to fill 176x132 completely (no side black bars), then add 12px black bar at bottom
+        # Create small black bar at bottom for subtitles (video fills 176x136, leaving 8px for subs)
+        # Scale up and crop to fill 176x136 completely (no side black bars), then add 8px black bar at bottom
         # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
         # Then escape colons for FFmpeg filter syntax
         escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
-        video_filter = f"scale=176:132:force_original_aspect_ratio=increase,crop=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
+        video_filter = f"scale=176:136:force_original_aspect_ratio=increase,crop=176:136,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
 
         ffmpeg_cmd = [
             FFMPEG_PATH,
