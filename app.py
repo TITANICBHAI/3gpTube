@@ -500,22 +500,25 @@ def download_subtitles(url, file_id):
     """
     Download English subtitles (manual or auto-generated) from YouTube using yt-dlp.
     Returns the path to the subtitle file if successful, None otherwise.
+    Supports both SRT and VTT formats (YouTube primarily uses VTT for auto-captions).
     """
-    subtitle_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.srt')
+    subtitle_path_srt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.srt')
+    subtitle_path_vtt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.vtt')
     
     try:
         ydl_opts = {
             'writesubtitles': True,
             'writeautomaticsub': True,
             'subtitleslangs': ['en'],
-            'subtitlesformat': 'srt',
             'skip_download': True,
             'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{file_id}'),
             'quiet': True,
             'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 3,
         }
         
-        # Add cookies if available for better subtitle access
+        # Add cookies if available for better subtitle access (helps avoid rate limits)
         if has_cookies():
             ydl_opts['cookiefile'] = COOKIES_FILE
         
@@ -524,16 +527,115 @@ def download_subtitles(url, file_id):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
-        # Check if subtitle file was created
-        if os.path.exists(subtitle_path) and os.path.getsize(subtitle_path) > 0:
-            logger.info(f"✓ English subtitles downloaded successfully: {subtitle_path}")
-            return subtitle_path
+        # Check for SRT file first, then VTT (YouTube uses VTT for auto-captions)
+        if os.path.exists(subtitle_path_srt) and os.path.getsize(subtitle_path_srt) > 0:
+            logger.info(f"✓ English subtitles (SRT) downloaded successfully: {subtitle_path_srt}")
+            return subtitle_path_srt
+        elif os.path.exists(subtitle_path_vtt) and os.path.getsize(subtitle_path_vtt) > 0:
+            logger.info(f"✓ English subtitles (VTT) downloaded, converting to SRT...")
+            # Convert VTT to SRT for MoviePy compatibility
+            srt_path = convert_vtt_to_srt(subtitle_path_vtt)
+            if srt_path and os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
+                # Clean up VTT file after successful conversion
+                try:
+                    os.remove(subtitle_path_vtt)
+                except:
+                    pass
+                return srt_path
+            else:
+                # Conversion failed - subtitle burning won't work, return None
+                logger.warning(f"VTT to SRT conversion failed for {file_id}. Subtitle burning will be skipped.")
+                try:
+                    if os.path.exists(subtitle_path_vtt):
+                        os.remove(subtitle_path_vtt)
+                except:
+                    pass
+                return None
         else:
             logger.info(f"No English subtitles available for {file_id}")
             return None
     
     except Exception as e:
-        logger.warning(f"Could not download subtitles for {file_id}: {str(e)[:150]}")
+        error_msg = str(e)
+        if '429' in error_msg or 'Too Many Requests' in error_msg:
+            logger.warning(f"YouTube rate limit hit when downloading subtitles for {file_id}. Upload cookies to bypass rate limits.")
+        else:
+            logger.warning(f"Could not download subtitles for {file_id}: {error_msg[:150]}")
+        return None
+
+def convert_vtt_to_srt(vtt_path):
+    """
+    Convert VTT subtitle file to SRT format.
+    MoviePy's SubtitlesClip requires properly formatted SRT.
+    Handles timestamp conversion, cue numbering, and VTT metadata removal.
+    """
+    try:
+        import re
+        
+        srt_path = vtt_path.replace('.vtt', '.srt')
+        
+        with open(vtt_path, 'r', encoding='utf-8') as vtt_file:
+            lines = vtt_file.readlines()
+        
+        srt_lines = []
+        cue_number = 1
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Skip WEBVTT header, Kind:, Language:, NOTE, and empty lines at the start
+            if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:') or line.startswith('NOTE') or not line:
+                i += 1
+                continue
+            
+            # Check if this line contains a timestamp (VTT cue timing)
+            # VTT format: 00:00:00.000 --> 00:00:05.000 or with positioning
+            timestamp_pattern = r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})'
+            match = re.search(timestamp_pattern, line)
+            
+            if match:
+                # Add cue number
+                srt_lines.append(str(cue_number))
+                cue_number += 1
+                
+                # Convert timestamps from VTT (.) to SRT (,) format
+                start_time = match.group(1).replace('.', ',')
+                end_time = match.group(2).replace('.', ',')
+                srt_lines.append(f"{start_time} --> {end_time}")
+                
+                # Get subtitle text (next lines until blank line)
+                i += 1
+                subtitle_text = []
+                while i < len(lines) and lines[i].strip():
+                    text_line = lines[i].strip()
+                    # Remove VTT-specific tags
+                    text_line = re.sub(r'<[^>]+>', '', text_line)  # HTML tags
+                    text_line = re.sub(r'</?c[^>]*>', '', text_line)  # <c> color tags
+                    text_line = re.sub(r'\{[^}]+\}', '', text_line)  # CSS-like tags
+                    if text_line:
+                        subtitle_text.append(text_line)
+                    i += 1
+                
+                # Add subtitle text
+                if subtitle_text:
+                    srt_lines.extend(subtitle_text)
+                
+                # Add blank line between cues
+                srt_lines.append('')
+            else:
+                # Skip cue identifiers or other VTT metadata
+                i += 1
+        
+        # Write SRT file
+        with open(srt_path, 'w', encoding='utf-8') as srt_file:
+            srt_file.write('\n'.join(srt_lines))
+        
+        logger.info(f"✓ Converted VTT to SRT: {srt_path} ({cue_number-1} cues)")
+        return srt_path
+    
+    except Exception as e:
+        logger.error(f"Failed to convert VTT to SRT: {str(e)[:200]}")
         return None
 
 def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id):
