@@ -1112,7 +1112,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 raise Exception(f"⚠️ YouTube requires PO tokens for this video. Upload cookies from /cookies page to access it.")
 
             if 'failed to extract' in error_lower or 'failed to parse' in error_lower:
-                raise Exception(f"⚠️ Could not extract video information. This video may have restrictions. Try again in a few minutes.{cookies_help}")
+                raise Exception(f"⚠️ Could not extract video information. Error details: {error_msg[:300]}{cookies_help}")
 
             if 'video player configuration error' in error_lower or 'error 153' in error_lower:
                 raise Exception(f"⚠️ Video player error (Error 153). This video has playback restrictions.{cookies_help}")
@@ -1145,7 +1145,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 else:
                     raise Exception(f"YouTube requires sign-in for this video. Upload cookies from /cookies page to access it.")
 
-            raise Exception(f"Download failed after trying 7 different methods: {error_msg[:150]}. Wait 10-15 minutes before retrying.")
+            # Log full error for debugging
+            logger.error(f"All download strategies failed. Full error: {error_msg}")
+            raise Exception(f"Download failed after trying 7 different methods. Error: {error_msg[:250]}. Wait 10-15 minutes before retrying.")
 
         if not os.path.exists(temp_video):
             raise Exception("Download failed: Video file not created")
