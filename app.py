@@ -13,8 +13,6 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, send_file, flash
 import hashlib
 import yt_dlp
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
-from moviepy.video.tools.subtitles import SubtitlesClip
 
 # Configure logging
 logging.basicConfig(
@@ -734,17 +732,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return False
 
 
-def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id):
+def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, quality_preset):
     """
     Burn subtitles into 3GP video using FFmpeg with ASS format.
     Creates dual-line subtitles: line 1 at bottom, line 2 at top.
-    Keeps video at exact 176x144 resolution with same encoding as FFmpeg conversion.
+    Uses EXACT same encoding parameters as original conversion to ensure identical display.
     
     Args:
         video_path: Path to input 3GP video file
         subtitle_path: Path to SRT subtitle file
         output_path: Path for output video with burned subtitles
         file_id: Unique file identifier for status updates
+        quality_preset: The same quality preset used in original conversion
     
     Returns:
         True if successful, False otherwise
@@ -765,6 +764,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id):
             srt_content = f.read()
         
         # ASS header with two styles: one for bottom (line1), one for top (line2)
+        # Font size reduced to 3px for minimal interference
         ass_header = """[Script Info]
 Title: 3GP Dual-Line Subtitles
 ScriptType: v4.00+
@@ -775,8 +775,8 @@ Collisions: Normal
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Line1,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,3,3,5,1
-Style: Line2,Arial,10,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,3,3,5,1
+Style: Line1,Arial,3,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,2,3,3,5,1
+Style: Line2,Arial,3,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,1,1,8,3,3,5,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -832,14 +832,39 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         
         logger.info(f"✓ Created ASS subtitle file: {ass_path}")
         
-        # Use FFmpeg to burn subtitles (same encoding as original conversion)
-        # This keeps the EXACT same format, so display size won't change
+        # Calculate derived parameters (same as original conversion)
+        video_bitrate_num = int(quality_preset['video_bitrate'].replace('k', ''))
+        maxrate = f"{int(video_bitrate_num * 1.25)}k"
+        bufsize = f"{int(video_bitrate_num * 2)}k"
+        fps_num = int(quality_preset['fps'])
+        gop_size = fps_num * 10
+        
+        # Use EXACT same FFmpeg parameters as original conversion
+        # Combine filters: scale/pad THEN ass (ass must be last)
+        video_filter = f"scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1,ass='{ass_path}'"
+        
         ffmpeg_cmd = [
             FFMPEG_PATH,
             '-i', video_path,
-            '-vf', f"ass={ass_path}",
-            '-c:v', 'mpeg4',
-            '-c:a', 'copy',  # Copy audio to avoid re-encoding
+            '-vf', video_filter,
+            '-vcodec', 'mpeg4',
+            '-r', quality_preset['fps'],
+            '-b:v', quality_preset['video_bitrate'],
+            '-maxrate', maxrate,
+            '-bufsize', bufsize,
+            '-qmin', '2',
+            '-qmax', '31',
+            '-mbd', 'rd',
+            '-flags', '+cgop',
+            '-g', str(gop_size),
+            '-trellis', '2',
+            '-cmp', '2',
+            '-subcmp', '2',
+            '-me_method', 'hex',
+            '-acodec', 'aac',
+            '-ar', quality_preset['audio_sample_rate'],
+            '-b:a', quality_preset['audio_bitrate'],
+            '-ac', '1',
             '-y',
             output_path
         ]
@@ -863,237 +888,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         
     except Exception as e:
         logger.error(f"FFmpeg subtitle burning failed for {file_id}: {str(e)[:300]}")
-        return False
-
-
-def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3gp=False):
-    """
-    Burn subtitles into video using MoviePy.
-    For 3GP: Keep video at 176x144 and overlay subtitles at top/bottom edges
-    For MP4: YouTube-style multi-line text
-    
-    IMPORTANT: Requires ImageMagick and fonts to be installed on the deployment platform.
-    For Render deployment, add to build command or use environment-specific setup.
-    
-    Args:
-        video_path: Path to input video file
-        subtitle_path: Path to SRT subtitle file
-        output_path: Path for output video with burned subtitles
-        file_id: Unique file identifier for status updates
-        is_3gp: If True, overlay subtitles at top and bottom of video (keeps 176x144)
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    video = None
-    final_video = None
-    
-    try:
-        video_type = '3GP' if is_3gp else 'MP4'
-        update_status(file_id, {
-            'status': 'burning_subtitles',
-            'progress': f'Burning subtitles into {video_type} (feature phone style)... This may take a few minutes.'
-        })
-        
-        logger.info(f"Starting subtitle burning for {file_id} ({video_type})")
-        
-        # Try multiple font options to maximize compatibility
-        font_options = [
-            'DejaVu-Sans-Bold',  # Preferred (if dejavu_fonts installed)
-            'Arial-Bold',  # Common system font
-            'Helvetica-Bold',  # macOS/Unix common font
-            'FreeSans-Bold',  # Linux free font
-            None  # Will use MoviePy default
-        ]
-        
-        # Generator function for subtitles
-        def generator(txt):
-            # For 3GP: small font for Nokia 5310 (240x320 screen, video at 176x144)
-            # For MP4: multi-line text, larger font with preserved line breaks
-            fontsize = 12 if is_3gp else 18
-            
-            for font in font_options:
-                try:
-                    if is_3gp:
-                        # For feature phones: single-line display (will split across top/bottom later)
-                        return TextClip(
-                            txt, 
-                            font=font if font else 'Arial',
-                            fontsize=fontsize,
-                            color='white',
-                            bg_color='black',
-                            size=(230, None),  # Width=230px (fits 240px screen), auto height
-                            method='caption',
-                            align='center',
-                            stroke_color='black',
-                            stroke_width=1
-                        )
-                    else:
-                        # For MP4: preserve line breaks for YouTube-style multi-line captions
-                        return TextClip(
-                            txt, 
-                            font=font if font else 'Arial',
-                            fontsize=fontsize,
-                            color='white',
-                            bg_color='black',
-                            size=(None, None),
-                            method='caption',
-                            align='center',
-                            stroke_color='black',
-                            stroke_width=2
-                        )
-                except Exception as font_error:
-                    logger.debug(f"Font {font} failed: {str(font_error)[:100]}, trying next...")
-                    continue
-            
-            raise Exception("No compatible fonts found for subtitle rendering. Please install ImageMagick and fonts on deployment platform.")
-        
-        # Generator for first line only (goes at bottom of video)
-        def generator_line1(txt):
-            lines = txt.split('\n')
-            line1 = lines[0] if lines else txt
-            fontsize = 10
-            
-            for font in font_options:
-                try:
-                    return TextClip(
-                        line1, 
-                        font=font if font else 'Arial',
-                        fontsize=fontsize,
-                        color='white',
-                        bg_color='black',
-                        size=(170, None),
-                        method='caption',
-                        align='center',
-                        stroke_color='black',
-                        stroke_width=1
-                    )
-                except Exception as font_error:
-                    continue
-            raise Exception("No compatible fonts found for subtitle rendering.")
-        
-        # Generator for second line only (goes at top of video)
-        def generator_line2(txt):
-            lines = txt.split('\n')
-            line2 = lines[1] if len(lines) > 1 else ''
-            fontsize = 10
-            
-            if not line2:
-                # Return transparent clip if no second line (use single space to avoid TextClip error)
-                for font in font_options:
-                    try:
-                        return TextClip(
-                            ' ',
-                            font=font if font else 'Arial',
-                            fontsize=1,
-                            color='black',
-                            bg_color='black',
-                            size=(1, 1)
-                        ).set_opacity(0)
-                    except:
-                        continue
-                return TextClip(' ', fontsize=1, color='black').set_opacity(0)
-            
-            for font in font_options:
-                try:
-                    return TextClip(
-                        line2, 
-                        font=font if font else 'Arial',
-                        fontsize=fontsize,
-                        color='white',
-                        bg_color='black',
-                        size=(170, None),
-                        method='caption',
-                        align='center',
-                        stroke_color='black',
-                        stroke_width=1
-                    )
-                except Exception as font_error:
-                    continue
-            raise Exception("No compatible fonts found for subtitle rendering.")
-        
-        # Load video with memory-conscious settings
-        video = VideoFileClip(video_path)
-        
-        # Create composite video with subtitles
-        # For 3GP: Keep video at 176x144, overlay subtitles at top and bottom
-        if is_3gp:
-            # Create two subtitle tracks: line 1 (bottom) and line 2 (top)
-            subtitles_line1 = SubtitlesClip(subtitle_path, generator_line1)
-            subtitles_line2 = SubtitlesClip(subtitle_path, generator_line2)
-            
-            # Position line 1 at BOTTOM of video (primary position)
-            # Place it at bottom edge with small margin
-            subtitles_line1_positioned = subtitles_line1.set_position(('center', video.h - 15))
-            
-            # Position line 2 at TOP of video (if it exists)
-            # Place it at top edge with small margin
-            subtitles_line2_positioned = subtitles_line2.set_position(('center', 2))
-            
-            # Composite: video + line1 (bottom) + line2 (top)
-            # No canvas expansion - keeps original 176x144 resolution
-            final_video = CompositeVideoClip([video, subtitles_line1_positioned, subtitles_line2_positioned])
-        else:
-            # For MP4: Use standard multi-line subtitles at bottom
-            subtitles = SubtitlesClip(subtitle_path, generator)
-            subtitles_positioned = subtitles.set_position(('center', 'bottom'))
-            
-            # Composite video with subtitles
-            final_video = CompositeVideoClip([video, subtitles_positioned])
-        
-        # Write output with memory-conscious settings for Render
-        logger.info(f"Writing {video_type} with burned subtitles for {file_id}")
-        
-        # Use appropriate codec for 3GP vs MP4
-        if is_3gp:
-            final_video.write_videofile(
-                output_path,
-                codec='mpeg4',
-                audio_codec='aac',
-                temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
-                remove_temp=True,
-                threads=1,
-                preset='ultrafast',
-                logger=None
-            )
-        else:
-            final_video.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp_audio.m4a'),
-                remove_temp=True,
-                threads=1,
-                preset='ultrafast',
-                logger=None
-            )
-        
-        # Clean up to free memory
-        final_video.close()
-        video.close()
-        gc.collect()
-        
-        logger.info(f"✓ Subtitles burned successfully for {file_id}")
-        return True
-        
-    except Exception as e:
-        error_msg = str(e)[:300]
-        logger.error(f"Subtitle burning failed for {file_id}: {error_msg}")
-        
-        # Provide helpful error message if it's a font/ImageMagick issue
-        if 'imagemagick' in error_msg.lower() or 'font' in error_msg.lower() or 'magick' in error_msg.lower():
-            logger.error("⚠️ ImageMagick or fonts not installed. Subtitle burning requires ImageMagick and system fonts on deployment platform.")
-        
-        # Clean up on error
-        try:
-            if video:
-                video.close()
-            if final_video:
-                final_video.close()
-            gc.collect()
-        except:
-            pass
-        
         return False
 
 def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn_subtitles=False):
@@ -1675,7 +1469,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
             
             # Use FFmpeg for 3GP subtitle burning (keeps exact same format/display size)
-            if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id):
+            if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id, quality_preset):
                 # Replace output_path with subtitle-burned version
                 try:
                     os.remove(output_path)
