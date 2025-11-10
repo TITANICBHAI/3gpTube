@@ -866,7 +866,6 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                 remove_temp=True,
                 threads=1,
                 preset='ultrafast',
-                ffmpeg_params=['-bufsize', '2M'],
                 logger=None
             )
         else:
@@ -878,7 +877,6 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
                 remove_temp=True,
                 threads=1,
                 preset='ultrafast',
-                ffmpeg_params=['-bufsize', '2M'],
                 logger=None
             )
         
