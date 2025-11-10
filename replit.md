@@ -6,7 +6,17 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 ## Recent Changes
 
-**November 10, 2025**
+**November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
+- ✓ Implemented English subtitle burning capability using MoviePy for YouTube-style subtitle overlays
+- ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
+- ✓ Created burn_subtitles_moviepy() with memory-conscious settings for Render constraints (threads=1, ultrafast preset)
+- ✓ Integrated subtitle burning into conversion pipeline with resource limits (45 min, 500MB max when enabled)
+- ✓ Added UI checkboxes in index.html and 3gp.html with clear experimental warnings
+- ✓ Installed ImageMagick and DejaVu fonts in dev environment
+- ⚠️ Feature requires ImageMagick + fonts on deployment platform (works in dev, may fail gracefully in production)
+- ✓ Implemented graceful degradation: subtitle burning failure continues normal conversion with status messages
+
+**Earlier Changes**
 - ✓ Implemented full playlist support with detection, confirmation page, and batch processing
 - ✓ Fixed playlist URL detection to handle both pure playlist URLs and watch?v=...&list=... formats
 - ✓ Configured unlimited processing time (DOWNLOAD_TIMEOUT = None, CONVERSION_TIMEOUT = None, MAX_VIDEO_DURATION = None)
@@ -47,6 +57,13 @@ Preferred communication style: Simple, everyday language.
   - Subprocess-based FFmpeg operations (implied by conversion functionality)
   - Background processing with threading for long-running conversions
   - File splitting capability for large files (re-encoding each part)
+  - **Subtitle Burning (EXPERIMENTAL)**: MoviePy-based subtitle overlay
+    - Downloads English subtitles (manual or auto-generated) via yt-dlp
+    - Burns subtitles into video with YouTube-style formatting (white text, black background)
+    - Memory-optimized settings for Render constraints (threads=1, bufsize=2M)
+    - Resource limits: max 45 minutes, 500MB file size when enabled
+    - Requires ImageMagick and system fonts (DejaVu-Sans-Bold preferred)
+    - Graceful degradation: continues normal conversion if subtitle burning fails
 - **Status Tracking**: JSON-based status file system
   - File: `/tmp/conversion_status.json`
   - Tracks download/conversion progress
@@ -111,15 +128,21 @@ Preferred communication style: Simple, everyday language.
   - Manages YouTube API interactions and format negotiation
 
 ### Required System Tools
-- **FFmpeg**: Video/audio conversion (implied, not in requirements.txt)
+- **FFmpeg**: Video/audio conversion
   - Used for format conversion (3GP, MP3)
   - File splitting and re-encoding
   - Should be available in system PATH
+- **ImageMagick** (Optional - for subtitle burning): Text rendering for MoviePy
+  - Required for subtitle burning feature
+  - Installed in dev environment via Nix (imagemagick, dejavu_fonts)
+  - Must be provisioned separately for Render/production deployment
+  - Subtitle feature fails gracefully if not available
 
 ### Python Dependencies
 - **Flask 3.0.0**: Web framework
 - **yt-dlp 2024.11.4**: YouTube downloader
 - **gunicorn 21.2.0**: WSGI HTTP server for production deployment
+- **moviepy 1.0.3**: Video editing and subtitle burning (experimental feature)
 
 ### Environment Variables
 - **SESSION_SECRET**: Flask session encryption key (optional, auto-generated if missing)
@@ -137,3 +160,9 @@ Preferred communication style: Simple, everyday language.
 - Suitable for Replit, Heroku, or similar platforms
 - Requires FFmpeg installation on host system
 - File cleanup mechanism needed for long-running instances
+- **For Subtitle Burning on Render**: Must install ImageMagick and fonts in build command:
+  ```
+  apt-get update && apt-get install -y imagemagick fonts-dejavu-core
+  ```
+  - Feature will fail gracefully without these dependencies
+  - Users will receive clear error messages in status updates
