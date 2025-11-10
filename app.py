@@ -776,28 +776,45 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         
         # Generator function for subtitles
         def generator(txt):
-            # For 3GP: single-line horizontal text, smaller font
-            # For MP4: multi-line text, larger font
-            fontsize = 10 if is_3gp else 18
-            
-            # Make single line for feature phones
-            if is_3gp:
-                txt = txt.replace('\n', ' ')  # Remove line breaks
+            # For 3GP: very small font (7px) for 176x144 video on 240x320 screen
+            # Constrain to max 2 lines with width and height constraints
+            # For MP4: multi-line text, larger font with preserved line breaks
+            fontsize = 7 if is_3gp else 18
             
             for font in font_options:
                 try:
-                    return TextClip(
-                        txt, 
-                        font=font if font else 'Arial',
-                        fontsize=fontsize,
-                        color='white',
-                        bg_color='black',
-                        size=(None, None),
-                        method='caption' if not is_3gp else 'label',  # label for single line
-                        align='center',
-                        stroke_color='black',
-                        stroke_width=1 if is_3gp else 2
-                    )
+                    if is_3gp:
+                        # For feature phones: Replace line breaks with spaces for compact display
+                        txt_clean = txt.replace('\n', ' ')
+                        
+                        # Constrain width to 160px and height to ~20px (max 2 lines at 7px font + padding)
+                        # This enforces max 2 lines - text beyond will be cut off
+                        return TextClip(
+                            txt_clean, 
+                            font=font if font else 'Arial',
+                            fontsize=fontsize,
+                            color='white',
+                            bg_color='black',
+                            size=(160, 20),  # Width=160px, Height=20px for max 2 lines
+                            method='caption',
+                            align='center',
+                            stroke_color='black',
+                            stroke_width=1
+                        )
+                    else:
+                        # For MP4: preserve line breaks for YouTube-style multi-line captions
+                        return TextClip(
+                            txt, 
+                            font=font if font else 'Arial',
+                            fontsize=fontsize,
+                            color='white',
+                            bg_color='black',
+                            size=(None, None),
+                            method='caption',
+                            align='center',
+                            stroke_color='black',
+                            stroke_width=2
+                        )
                 except Exception as font_error:
                     logger.debug(f"Font {font} failed: {str(font_error)[:100]}, trying next...")
                     continue

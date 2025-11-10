@@ -18,12 +18,15 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 **November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
 - ✓ Implemented English subtitle burning capability using MoviePy
-- ✓ **3GP subtitle burning**: Subtitles burned into 3GP after conversion with single-line horizontal text
-  - Optimized for feature phones (176x144 screen resolution)
-  - Font size: 10px for 176x144, 12px for 240x320
-  - Method: 'label' (single line) instead of 'caption' (multi-line)
+- ✓ **3GP subtitle burning**: Subtitles burned into 3GP after conversion
+  - Optimized for Nokia 5310 (240x320 screen) playing 176x144 video
+  - Font size: 7px (very small to fit in black bars/letterbox area)
+  - Size constraint: (160, 20) - width 160px, height 20px for max 2 lines
+  - Method: 'caption' with line breaks replaced by spaces for compact display
+  - Text beyond 2 lines is cut off gracefully
+  - Positioned at bottom to not cover video content
   - Output: {file_id}_with_subs.3gp (replaces regular 3GP)
-- ✓ **MP4 subtitle burning**: YouTube-style multi-line text (fontsize=18, method='caption')
+- ✓ **MP4 subtitle burning**: YouTube-style multi-line text (fontsize=18, preserves line breaks)
 - ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
 - ✓ Created burn_subtitles_moviepy() with is_3gp parameter for format-specific subtitle styling
 - ✓ Updated file detection in /status, /download, /history routes to handle _with_subs.3gp files
@@ -76,10 +79,13 @@ Preferred communication style: Simple, everyday language.
   - File splitting capability for large files (re-encoding each part)
   - **Subtitle Burning (EXPERIMENTAL)**: MoviePy-based subtitle overlay
     - Downloads English subtitles (manual or auto-generated) via yt-dlp
-    - **3GP format**: Single-line horizontal text optimized for feature phones (176x144 resolution)
-      - Font size: 10px, method='label', burned after 3GP conversion
+    - **3GP format**: Compact 2-line max text optimized for Nokia 5310 (240x320 screen, 176x144 video)
+      - Font size: 7px, size constraint: (160, 20) for max 2 lines
+      - Line breaks replaced with spaces, text beyond 2 lines cut off
+      - Positioned at bottom in black bars/letterbox area
+      - Burned after 3GP conversion
       - Output file: {file_id}_with_subs.3gp
-    - **MP4 format**: Multi-line YouTube-style text (fontsize=18, method='caption')
+    - **MP4 format**: Multi-line YouTube-style text (fontsize=18, preserves line breaks)
       - Burned before final output
       - Output file: {file_id}_with_subs.mp4
     - Memory-optimized settings for Render constraints (threads=1, bufsize=2M)
