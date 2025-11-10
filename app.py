@@ -871,12 +871,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             output_path
         ]
         
-        logger.info(f"Running FFmpeg subtitle burn: {' '.join(ffmpeg_cmd[:6])}...")
+        logger.info(f"Running FFmpeg subtitle burn: {' '.join(ffmpeg_cmd[:10])}...")
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
         
         if result.returncode != 0:
-            error_msg = result.stderr[:300] if result.stderr else "Unknown FFmpeg error"
+            error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
             logger.error(f"FFmpeg subtitle burning failed: {error_msg}")
+            logger.error(f"Full FFmpeg command: {' '.join(ffmpeg_cmd)}")
             return False
         
         # Clean up ASS file
