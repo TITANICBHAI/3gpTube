@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["ffmpeg-full"]
+packages = ["ffmpeg-full", "imagemagickBig"]
 
 [workflows]
 runButton = "Project"
@@ -33,7 +33,3 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 44579
-externalPort = 3000
