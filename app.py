@@ -858,6 +858,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             '-qmax', '31',
             '-mbd', 'rd',
             '-flags', '+cgop',
+            '-sc_threshold', '1000000000',
             '-g', str(gop_size),
             '-trellis', '2',
             '-cmp', '2',
