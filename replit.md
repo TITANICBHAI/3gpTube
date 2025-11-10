@@ -6,6 +6,16 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 ## Recent Changes
 
+**November 10, 2025 - Production Deployment Configuration**
+- ✓ Fixed None comparison bug in MAX_VIDEO_DURATION check (caused conversion failures)
+- ✓ Created complete Render/Docker deployment setup optimized for FREE TIER (512MB RAM, 0.1 vCPU)
+- ✓ Added ImageMagick and fonts to Dockerfile and build.sh for subtitle burning support
+- ✓ Configured Gunicorn with 1 worker, 1 thread (minimizes CPU usage for 0.1 vCPU constraint)
+- ✓ MoviePy subtitle burning already optimized with threads=1, ultrafast preset, 2MB buffers
+- ✓ Created render.yaml, Dockerfile, docker-compose.yml, build.sh, .dockerignore
+- ✓ Fixed LSP errors in playlist code (defensive None checking)
+- ✓ Verified subtitle limits (45min, 500MB) are separate from main conversion (unlimited)
+
 **November 10, 2025 - Subtitle Burning Feature (EXPERIMENTAL)**
 - ✓ Implemented English subtitle burning capability using MoviePy for YouTube-style subtitle overlays
 - ✓ Added download_subtitles() function to fetch English subtitles via yt-dlp (manual + auto-generated)
@@ -13,7 +23,6 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 - ✓ Integrated subtitle burning into conversion pipeline with resource limits (45 min, 500MB max when enabled)
 - ✓ Added UI checkboxes in index.html and 3gp.html with clear experimental warnings
 - ✓ Installed ImageMagick and DejaVu fonts in dev environment
-- ⚠️ Feature requires ImageMagick + fonts on deployment platform (works in dev, may fail gracefully in production)
 - ✓ Implemented graceful degradation: subtitle burning failure continues normal conversion with status messages
 
 **Earlier Changes**
