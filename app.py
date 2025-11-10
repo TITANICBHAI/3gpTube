@@ -332,7 +332,7 @@ def extract_playlist_info(url):
         }
         if has_cookies():
             ydl_opts['cookiefile'] = COOKIES_FILE
-        
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if info and info.get('_type') == 'playlist':
@@ -362,18 +362,18 @@ def process_playlist(playlist_id, url, output_format, quality, burn_subtitles=Fa
         status = get_playlist_status()
         playlist_data = status.get(playlist_id, {})
         videos = playlist_data.get('videos', {})
-        
+
         for video_id, video_info in videos.items():
             if video_info.get('status') == 'pending':
                 update_playlist_status(playlist_id, {
                     'videos': {**videos, video_id: {**video_info, 'status': 'processing'}}
                 })
-                
+
                 file_id = generate_file_id(video_info['url'])
                 video_info['file_id'] = file_id
-                
+
                 download_and_convert(video_info['url'], file_id, output_format, quality, burn_subtitles)
-                
+
                 file_status = get_status().get(file_id, {})
                 if file_status.get('status') == 'completed':
                     video_info['status'] = 'completed'
@@ -382,10 +382,10 @@ def process_playlist(playlist_id, url, output_format, quality, burn_subtitles=Fa
                     video_info['status'] = 'failed'
                     video_info['error'] = file_status.get('progress', 'Unknown error')
                     playlist_data['failed_count'] = playlist_data.get('failed_count', 0) + 1
-                
+
                 videos[video_id] = video_info
                 update_playlist_status(playlist_id, {'videos': videos, 'completed_count': playlist_data.get('completed_count', 0), 'failed_count': playlist_data.get('failed_count', 0)})
-        
+
         update_playlist_status(playlist_id, {'status': 'completed'})
     except Exception as e:
         logger.error(f"Playlist processing error: {e}")
@@ -502,7 +502,7 @@ def download_subtitles(url, file_id):
     """
     subtitle_path_srt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.srt')
     subtitle_path_vtt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.vtt')
-    
+
     try:
         ydl_opts = {
             'writesubtitles': True,
@@ -519,16 +519,16 @@ def download_subtitles(url, file_id):
             'max_sleep_interval': 5,
             'http_chunk_size': 2097152,  # 2MB chunks (mimics YouTube app)
         }
-        
+
         # Add cookies if available for better subtitle access
         if has_cookies():
             ydl_opts['cookiefile'] = COOKIES_FILE
-        
+
         logger.info(f"Attempting to download English subtitles for {file_id}")
-        
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        
+
         # Check for SRT file first, then VTT (YouTube uses VTT for auto-captions)
         if os.path.exists(subtitle_path_srt) and os.path.getsize(subtitle_path_srt) > 0:
             logger.info(f"✓ English subtitles (SRT) downloaded successfully: {subtitle_path_srt}")
@@ -556,7 +556,7 @@ def download_subtitles(url, file_id):
         else:
             logger.info(f"No English subtitles available for {file_id}")
             return None
-    
+
     except Exception as e:
         error_msg = str(e)
         if '429' in error_msg or 'Too Many Requests' in error_msg:
@@ -573,39 +573,39 @@ def convert_vtt_to_srt(vtt_path):
     """
     try:
         import re
-        
+
         srt_path = vtt_path.replace('.vtt', '.srt')
-        
+
         with open(vtt_path, 'r', encoding='utf-8') as vtt_file:
             lines = vtt_file.readlines()
-        
+
         srt_lines = []
         cue_number = 1
         i = 0
-        
+
         while i < len(lines):
             line = lines[i].strip()
-            
+
             # Skip WEBVTT header, Kind:, Language:, NOTE, and empty lines at the start
             if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:') or line.startswith('NOTE') or not line:
                 i += 1
                 continue
-            
+
             # Check if this line contains a timestamp (VTT cue timing)
             # VTT format: 00:00:00.000 --> 00:00:05.000 or with positioning
             timestamp_pattern = r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})'
             match = re.search(timestamp_pattern, line)
-            
+
             if match:
                 # Add cue number
                 srt_lines.append(str(cue_number))
                 cue_number += 1
-                
+
                 # Convert timestamps from VTT (.) to SRT (,) format
                 start_time = match.group(1).replace('.', ',')
                 end_time = match.group(2).replace('.', ',')
                 srt_lines.append(f"{start_time} --> {end_time}")
-                
+
                 # Get subtitle text (next lines until blank line)
                 i += 1
                 subtitle_text = []
@@ -618,24 +618,24 @@ def convert_vtt_to_srt(vtt_path):
                     if text_line:
                         subtitle_text.append(text_line)
                     i += 1
-                
+
                 # Add subtitle text
                 if subtitle_text:
                     srt_lines.extend(subtitle_text)
-                
+
                 # Add blank line between cues
                 srt_lines.append('')
             else:
                 # Skip cue identifiers or other VTT metadata
                 i += 1
-        
+
         # Write SRT file
         with open(srt_path, 'w', encoding='utf-8') as srt_file:
             srt_file.write('\n'.join(srt_lines))
-        
+
         logger.info(f"✓ Converted VTT to SRT: {srt_path} ({cue_number-1} cues)")
         return srt_path
-    
+
     except Exception as e:
         logger.error(f"Failed to convert VTT to SRT: {str(e)[:200]}")
         return None
@@ -644,20 +644,20 @@ def convert_srt_to_ass(srt_path, ass_path, video_width=176, video_height=144):
     """
     Convert SRT subtitles to ASS format with custom styling for feature phones.
     Single-line horizontal scrolling text optimized for tiny screens (176x144 or 240x320).
-    
+
     Args:
         srt_path: Path to SRT subtitle file
         ass_path: Path for output ASS file
         video_width: Video width (176 or 240)
         video_height: Video height (144 or 320)
-    
+
     Returns:
         True if successful, False otherwise
     """
     try:
         # Determine font size based on video width
         fontsize = 10 if video_width <= 176 else 12
-        
+
         # ASS header with single-line horizontal style for feature phones
         ass_header = f"""[Script Info]
 Title: Feature Phone Subtitles
@@ -675,29 +675,29 @@ Style: Default,Arial,{fontsize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-        
+
         # Read SRT file
         with open(srt_path, 'r', encoding='utf-8') as f:
             srt_content = f.read()
-        
+
         # Parse SRT and convert to ASS
         ass_events = []
         blocks = srt_content.strip().split('\n\n')
-        
+
         for block in blocks:
             lines = block.strip().split('\n')
             if len(lines) < 3:
                 continue
-            
+
             # Parse timing (line 1 is number, line 2 is timing)
             timing_line = lines[1]
             if '-->' not in timing_line:
                 continue
-            
+
             start_time, end_time = timing_line.split('-->')
             start_time = start_time.strip().replace(',', '.')
             end_time = end_time.strip().replace(',', '.')
-            
+
             # Convert SRT time format (HH:MM:SS,mmm) to ASS format (H:MM:SS.cc)
             def srt_to_ass_time(srt_time):
                 parts = srt_time.split(':')
@@ -706,27 +706,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     h = str(int(h))  # Remove leading zero
                     return f"{h}:{m}:{s[:5]}"  # Only keep 2 decimal places
                 return srt_time
-            
+
             ass_start = srt_to_ass_time(start_time)
             ass_end = srt_to_ass_time(end_time)
-            
+
             # Get subtitle text (all lines after timing) - join as single line
             subtitle_text = ' '.join(lines[2:]).replace('\n', ' ')
             # Remove ASS-style line breaks (\\N) and make it single line
             subtitle_text = subtitle_text.replace('\\N', ' ')
-            
+
             # Create ASS event
             ass_event = f"Dialogue: 0,{ass_start},{ass_end},Default,,0,0,0,,{subtitle_text}"
             ass_events.append(ass_event)
-        
+
         # Write ASS file
         with open(ass_path, 'w', encoding='utf-8') as f:
             f.write(ass_header)
             f.write('\n'.join(ass_events))
-        
+
         logger.info(f"✓ Converted SRT to ASS with single-line style: {ass_path}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to convert SRT to ASS: {str(e)[:200]}")
         return False
@@ -737,14 +737,14 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
     Burn subtitles into 3GP video using FFmpeg with ASS format.
     Creates dual-line subtitles: line 1 at bottom, line 2 at top.
     Uses EXACT same encoding parameters as original conversion to ensure identical display.
-    
+
     Args:
         video_path: Path to input 3GP video file
         subtitle_path: Path to SRT subtitle file
         output_path: Path for output video with burned subtitles
         file_id: Unique file identifier for status updates
         quality_preset: The same quality preset used in original conversion
-    
+
     Returns:
         True if successful, False otherwise
     """
@@ -753,16 +753,16 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             'status': 'burning_subtitles',
             'progress': 'Burning subtitles into 3GP... This may take a few minutes.'
         })
-        
+
         logger.info(f"Starting FFmpeg subtitle burning for {file_id}")
-        
+
         # Create ASS file with dual-line support (line 1 at bottom, line 2 at top)
         ass_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_subs.ass')
-        
+
         # Read SRT file
         with open(subtitle_path, 'r', encoding='utf-8') as f:
             srt_content = f.read()
-        
+
         # ASS header with two styles: one for bottom (line1), one for top (line2)
         # Font size 6px with proper outline and shadow for visibility, zero margins for direct positioning
         ass_header = """[Script Info]
@@ -781,25 +781,25 @@ Style: Line2,Arial,6,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,10
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-        
+
         # Parse SRT and create dual-line ASS events
         ass_events = []
         blocks = srt_content.strip().split('\n\n')
-        
+
         for block in blocks:
             lines = block.strip().split('\n')
             if len(lines) < 3:
                 continue
-            
+
             # Parse timing
             timing_line = lines[1]
             if '-->' not in timing_line:
                 continue
-            
+
             start_time, end_time = timing_line.split('-->')
             start_time = start_time.strip().replace(',', '.')
             end_time = end_time.strip().replace(',', '.')
-            
+
             # Convert time format
             def srt_to_ass_time(srt_time):
                 parts = srt_time.split(':')
@@ -808,43 +808,43 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     h = str(int(h))
                     return f"{h}:{m}:{s[:5]}"
                 return srt_time
-            
+
             ass_start = srt_to_ass_time(start_time)
             ass_end = srt_to_ass_time(end_time)
-            
+
             # Get subtitle text and preserve line breaks
             subtitle_text = '\n'.join(lines[2:])  # Keep \n to preserve line breaks
             subtitle_lines = subtitle_text.split('\n')
-            
+
             # Line 1 (bottom) - always use first line or full text
             line1_text = subtitle_lines[0] if subtitle_lines else subtitle_text
             ass_events.append(f"Dialogue: 0,{ass_start},{ass_end},Line1,,0,0,0,,{line1_text}")
-            
+
             # Line 2 (top) - only if there's a second line
             if len(subtitle_lines) > 1 and subtitle_lines[1].strip():
                 line2_text = subtitle_lines[1]
                 ass_events.append(f"Dialogue: 0,{ass_start},{ass_end},Line2,,0,0,0,,{line2_text}")
-        
+
         # Write ASS file
         with open(ass_path, 'w', encoding='utf-8') as f:
             f.write(ass_header)
             f.write('\n'.join(ass_events))
-        
+
         logger.info(f"✓ Created ASS subtitle file: {ass_path}")
-        
+
         # Calculate derived parameters (same as original conversion)
         video_bitrate_num = int(quality_preset['video_bitrate'].replace('k', ''))
         maxrate = f"{int(video_bitrate_num * 1.25)}k"
         bufsize = f"{int(video_bitrate_num * 2)}k"
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
-        
+
         # Create small black bar at bottom for subtitles (video to 176x132, leaving 12px for subs)
         # Scale to exact 176x132 with slight horizontal stretch to fill width
-        # Escape the path properly for FFmpeg - replace backslashes and colons
-        escaped_ass_path = ass_path.replace('\\', '\\\\').replace(':', '\\:')
+        # Escape the path properly for FFmpeg on Linux - only escape colons
+        escaped_ass_path = ass_path.replace(':', '\\:')
         video_filter = f"scale=176:132,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
-        
+
         ffmpeg_cmd = [
             FFMPEG_PATH,
             '-i', video_path,
@@ -871,25 +871,25 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             '-y',
             output_path
         ]
-        
+
         logger.info(f"Running FFmpeg subtitle burn: {' '.join(ffmpeg_cmd[:10])}...")
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
-        
+
         if result.returncode != 0:
             error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
             logger.error(f"FFmpeg subtitle burning failed: {error_msg}")
             logger.error(f"Full FFmpeg command: {' '.join(ffmpeg_cmd)}")
             return False
-        
+
         # Clean up ASS file
         try:
             os.remove(ass_path)
         except:
             pass
-        
+
         logger.info(f"✓ Subtitles burned successfully with FFmpeg for {file_id}")
         return True
-        
+
     except Exception as e:
         logger.error(f"FFmpeg subtitle burning failed for {file_id}: {str(e)[:300]}")
         return False
@@ -1132,7 +1132,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
 
         last_error = None
         download_success = False
-        
+
         # Custom user agent support
         custom_ua = os.environ.get('CUSTOM_USER_AGENT', '')
 
@@ -1157,7 +1157,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                         delay = 8
                     else:
                         delay = 10
-                    
+
                     update_status(file_id, {
                         'status': 'downloading',
                         'progress': f'Retrying with {strategy["name"]} client... (attempt {i+1}/{len(strategies)}, waiting {delay}s to avoid rate limits)'
@@ -1166,18 +1166,18 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
 
                 # Merge strategy options with base options
                 ydl_opts = {**base_opts, **strategy['opts']}
-                
+
                 # Override user agent if custom one is provided
                 if custom_ua:
                     if 'http_headers' not in ydl_opts:
                         ydl_opts['http_headers'] = {}
                     ydl_opts['http_headers']['User-Agent'] = custom_ua
                     logger.info(f"Using custom user agent for {file_id}")
-                
+
                 # Enhanced browser headers for better mimicking
                 if 'http_headers' not in ydl_opts:
                     ydl_opts['http_headers'] = {}
-                
+
                 # Add realistic browser headers if not already present
                 headers = ydl_opts['http_headers']
                 if 'DNT' not in headers:
@@ -1196,7 +1196,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 # Use yt-dlp Python API instead of subprocess
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=True)
-                    
+
                     # Save video title for better download filenames
                     if info_dict and 'title' in info_dict:
                         video_title = info_dict.get('title', 'video')
@@ -1214,10 +1214,10 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             except yt_dlp.utils.DownloadError as e:
                 last_error = str(e)
                 error_lower = last_error.lower()
-                
+
                 # Detect temporary vs permanent errors for better retry logic
                 is_temporary = False
-                
+
                 # Temporary errors (should retry with different strategy)
                 if any(code in last_error for code in ['429', '503', '504']):
                     is_temporary = True
@@ -1225,13 +1225,13 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 elif 'timeout' in error_lower or 'timed out' in error_lower:
                     is_temporary = True
                     logger.warning(f"Timeout with {strategy['name']}: {last_error[:150]}")
-                
+
                 # Permanent errors (less likely to succeed with retry)
                 elif any(code in last_error for code in ['404', '410']):
                     logger.error(f"Permanent error {strategy['name']}: Video not found or deleted")
                     # Don't retry for permanent errors
                     break
-                
+
                 # IP blocking / bot detection
                 elif '403' in last_error or 'forbidden' in error_lower or 'bot' in error_lower:
                     logger.warning(f"⚠️ Possible IP block detected with {strategy['name']}: {last_error[:200]}")
@@ -1239,7 +1239,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     time.sleep(5)
                 else:
                     logger.error(f"{strategy['name']} download error for {file_id}: {last_error[:200]}")
-                
+
                 continue
             except Exception as e:
                 last_error = str(e)
@@ -1335,7 +1335,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             else:
                 # Download English subtitles
                 subtitle_file = download_subtitles(url, file_id)
-                
+
                 if not subtitle_file:
                     logger.info(f"No English subtitles available, proceeding without subtitle burning")
                     update_status(file_id, {
@@ -1363,7 +1363,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 '-q:a', quality_preset['vbr_quality'],  # VBR quality from preset
                 '-compression_level', '9',  # Maximum compression (smaller files, slightly slower)
                 '-joint_stereo', '1',  # Better stereo compression (5-10% smaller)
-                
+
                 '-y',
                 output_path
             ]
@@ -1383,7 +1383,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             convert_cmd = [
                 FFMPEG_PATH,
                 '-i', temp_video,
-                '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,pad=176:144:(ow-iw)/2:(oh-ih)/2,setsar=1',
+                '-vf','scale=176:-2:force_original_aspect_ratio=decrease,setsar=1',
                 '-vcodec', 'mpeg4',
                 '-r', quality_preset['fps'],  # FPS from preset
                 '-b:v', quality_preset['video_bitrate'],  # Video bitrate from preset
@@ -1402,7 +1402,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 '-ar', quality_preset['audio_sample_rate'],  # Audio sample rate from preset
                 '-b:a', quality_preset['audio_bitrate'],  # Audio bitrate from preset
                 '-ac', '1',
-                
+
                 '-y',
                 output_path
             ]
@@ -1426,7 +1426,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     '-ar', '16000',
                     '-b:a', '32k',
                     '-ac', '1',
-                    
+
                     '-y',
                     output_path
                 ]
@@ -1442,7 +1442,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     '-ar', '16000',
                     '-b:a', '24k',
                     '-ac', '1',
-                    
+
                     '-y',
                     output_path
                 ]
@@ -1471,7 +1471,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         # Burn subtitles into 3GP AFTER conversion if requested
         if subtitle_file and output_format == '3gp':
             output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
-            
+
             # Use FFmpeg for 3GP subtitle burning (keeps exact same format/display size)
             if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id, quality_preset):
                 # Replace output_path with subtitle-burned version
@@ -1479,10 +1479,10 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     os.remove(output_path)
                 except Exception as e:
                     logger.warning(f"Could not remove original 3GP: {e}")
-                
+
                 output_path = output_with_subs
                 logger.info(f"✓ Subtitles burned into 3GP: {output_path}")
-                
+
                 update_status(file_id, {
                     'status': 'completed',
                     'progress': '✓ Subtitles burned successfully into 3GP!'
@@ -1498,7 +1498,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                         os.remove(output_with_subs)
                     except:
                         pass
-            
+
             # Clean up subtitle file
             try:
                 os.remove(subtitle_file)
@@ -1589,12 +1589,12 @@ def cleanup_old_files():
                             file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
                             file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
                             file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
-                            
+
                             for file_path in [file_path_3gp_subs, file_path_3gp, file_path_mp3, file_path_mp4_subs, file_path_mp4]:
                                 if os.path.exists(file_path):
                                     os.remove(file_path)
                                     deleted_count += 1
-                            
+
                             # Also delete any split parts for this file_id
                             for filename in os.listdir(DOWNLOAD_FOLDER):
                                 if filename.startswith(f'{file_id}_part'):
@@ -1604,7 +1604,7 @@ def cleanup_old_files():
                                         deleted_count += 1
                                     except Exception as e:
                                         logger.warning(f"Could not remove split part {filename}: {e}")
-                            
+
                             del status[file_id]
                     except Exception as e:
                         logger.error(f"Error cleaning file {file_id}: {e}")
@@ -1696,34 +1696,34 @@ def health():
 def history():
     """Show download history of recent conversions (last 48 hours)"""
     status_data = get_status()
-    
+
     # Filter for files from last 48 hours
     cutoff_time = datetime.now() - timedelta(hours=48)
     history_items = []
-    
+
     for file_id, data in status_data.items():
         try:
             # Get timestamp
             timestamp_str = data.get('timestamp') or data.get('completed_at')
             if not timestamp_str:
                 continue
-            
+
             file_time = datetime.fromisoformat(timestamp_str)
             if file_time < cutoff_time:
                 continue
-            
+
             # Determine file format - check all possible file types
             file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
             file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
             file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
             file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
             file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
-            
+
             format_type = None
             file_exists = False
             file_size = 0
             actual_file_path = None
-            
+
             if os.path.exists(file_path_mp4_subs):
                 format_type = 'MP4 (with subtitles)'
                 file_exists = True
@@ -1749,7 +1749,7 @@ def history():
                 file_exists = True
                 file_size = os.path.getsize(file_path_mp3)
                 actual_file_path = file_path_mp3
-            
+
             # Calculate expiry time
             expiry_time = None
             time_remaining = None
@@ -1757,7 +1757,7 @@ def history():
                 completed_at = datetime.fromisoformat(data['completed_at'])
                 expiry_time = completed_at + timedelta(hours=FILE_RETENTION_HOURS)
                 time_remaining = expiry_time - datetime.now()
-            
+
             history_items.append({
                 'file_id': file_id,
                 'title': data.get('video_title', 'Unknown'),
@@ -1774,23 +1774,23 @@ def history():
         except Exception as e:
             logger.warning(f"Error processing history item {file_id}: {e}")
             continue
-    
+
     # Sort by timestamp (newest first)
     history_items.sort(key=lambda x: x['timestamp'], reverse=True)
-    
+
     return render_template('history.html', history_items=history_items)
 
 @app.route('/convert', methods=['POST'])
 def convert():
     url = request.form.get('url', '').strip()
     output_format = request.form.get('format', '3gp').strip()
-    
+
     # Get quality based on selected format
     if output_format == 'mp3':
         quality = request.form.get('mp3_quality', 'auto').strip()
     else:
         quality = request.form.get('video_quality', 'auto').strip()
-    
+
     # Get subtitle burning option (only applicable for video formats)
     burn_subtitles = request.form.get('burn_subtitles', 'off') == 'on'
 
@@ -1837,16 +1837,16 @@ def playlist_confirm():
     output_format = request.args.get('format', '3gp')
     quality = request.args.get('quality', 'auto')
     burn_subtitles = request.args.get('burn_subtitles', 'False') == 'True'
-    
+
     if not url:
         flash('No playlist URL provided')
         return redirect(url_for('index'))
-    
+
     playlist_info = extract_playlist_info(url)
     if not playlist_info.get('is_playlist'):
         flash('Invalid playlist URL')
         return redirect(url_for('index'))
-    
+
     return render_template('playlist_confirm.html', 
                           playlist=playlist_info, 
                           url=url, 
@@ -1862,18 +1862,18 @@ def playlist_convert():
     output_format = request.form.get('format', '3gp').strip()
     quality = request.form.get('quality', 'auto').strip()
     burn_subtitles = request.form.get('burn_subtitles', 'off') == 'on'
-    
+
     if not url:
         flash('No playlist URL provided')
         return redirect(url_for('index'))
-    
+
     playlist_info = extract_playlist_info(url)
     if not playlist_info.get('is_playlist'):
         flash('Invalid playlist URL')
         return redirect(url_for('index'))
-    
+
     playlist_id = generate_file_id(url)
-    
+
     videos_dict = {}
     videos = playlist_info.get('videos') or []
     if not isinstance(videos, list):
@@ -1887,7 +1887,7 @@ def playlist_convert():
             'file_id': None,
             'error': None
         }
-    
+
     update_playlist_status(playlist_id, {
         'created_at': datetime.now().isoformat(),
         'playlist_title': playlist_info['title'],
@@ -1901,29 +1901,29 @@ def playlist_convert():
         'failed_count': 0,
         'videos': videos_dict
     })
-    
+
     thread = threading.Thread(target=process_playlist, args=(playlist_id, url, output_format, quality, burn_subtitles))
     thread.daemon = True
     thread.start()
-    
+
     return redirect(url_for('playlist_status_page', playlist_id=playlist_id))
 
 @app.route('/playlist/status/<playlist_id>')
 def playlist_status_page(playlist_id):
     status_data = get_playlist_status()
     playlist = status_data.get(playlist_id, {})
-    
+
     if not playlist:
         flash('Playlist not found or expired')
         return redirect(url_for('index'))
-    
+
     return render_template('playlist_status.html', playlist_id=playlist_id, playlist=playlist)
 
 @app.route('/status/<file_id>')
 def status(file_id):
     status_data = get_status()
     file_status = status_data.get(file_id, {'status': 'unknown', 'progress': 'File not found'})
-    
+
     # Get file info if file exists
     file_info = None
     if file_status.get('status') == 'completed':
@@ -1932,7 +1932,7 @@ def status(file_id):
         file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
         file_path_mp4_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.mp4')
         file_path_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp4')
-        
+
         if os.path.exists(file_path_mp4_subs):
             file_info = get_file_info(file_path_mp4_subs)
         elif os.path.exists(file_path_mp4):
@@ -1943,7 +1943,7 @@ def status(file_id):
             file_info = get_file_info(file_path_3gp)
         elif os.path.exists(file_path_mp3):
             file_info = get_file_info(file_path_mp3)
-    
+
     return render_template('status.html', file_id=file_id, file_status=file_status, file_info=file_info)
 
 @app.route('/download/<file_id>')
@@ -1954,7 +1954,7 @@ def download(file_id):
     file_path_3gp_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
     file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
     file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
-    
+
     # Get video title from status for better filename
     status_data = get_status()
     file_status = status_data.get(file_id, {})
@@ -1984,21 +1984,21 @@ def get_file_info(file_path):
         'duration_human': 'Unknown',
         'format': os.path.splitext(file_path)[1].replace('.', '').upper()
     }
-    
+
     if not os.path.exists(file_path):
         return info
-    
+
     # Get file size
     size_bytes = os.path.getsize(file_path)
     info['size_bytes'] = size_bytes
     info['size_mb'] = size_bytes / (1024 * 1024)
-    
+
     # Human readable size
     if size_bytes >= 1024 * 1024:
         info['size_human'] = f"{size_bytes / (1024 * 1024):.2f} MB"
     else:
         info['size_human'] = f"{size_bytes / 1024:.2f} KB"
-    
+
     # Get duration using ffprobe (for video/audio files)
     ext = os.path.splitext(file_path)[1].lower()
     if ext in ['.3gp', '.mp3', '.mp4', '.avi', '.mkv', '.flv']:
@@ -2014,12 +2014,12 @@ def get_file_info(file_path):
             if result.returncode == 0 and result.stdout.strip():
                 duration_seconds = float(result.stdout.strip())
                 info['duration_seconds'] = int(duration_seconds)
-                
+
                 # Human readable duration
                 hours = int(duration_seconds // 3600)
                 minutes = int((duration_seconds % 3600) // 60)
                 seconds = int(duration_seconds % 60)
-                
+
                 if hours > 0:
                     info['duration_human'] = f"{hours}h {minutes}m {seconds}s"
                 elif minutes > 0:
@@ -2028,7 +2028,7 @@ def get_file_info(file_path):
                     info['duration_human'] = f"{seconds}s"
         except Exception as e:
             logger.warning(f"Could not get duration for {file_path}: {str(e)}")
-    
+
     return info
 
 def split_media_file(file_path, num_parts, file_id):
@@ -2038,42 +2038,42 @@ def split_media_file(file_path, num_parts, file_id):
     """
     if not os.path.exists(file_path):
         return None
-    
+
     ext = os.path.splitext(file_path)[1].lower()
-    
+
     # Get total duration
     info = get_file_info(file_path)
     total_duration = info['duration_seconds']
-    
+
     if total_duration == 0:
         logger.warning(f"Could not get duration for media split: {file_path}")
         return None
-    
+
     # Calculate duration per part
     duration_per_part = total_duration / num_parts
-    
+
     # Minimum 10 seconds per part
     if duration_per_part < 10:
         logger.warning(f"Parts would be too short ({duration_per_part}s), adjusting...")
         num_parts = max(2, int(total_duration / 10))
         duration_per_part = total_duration / num_parts
-    
+
     parts = []
     part_num = 1
     start_time = 0
-    
+
     logger.info(f"Splitting {file_path} into {num_parts} parts (each ~{int(duration_per_part)}s)")
-    
+
     while start_time < total_duration and part_num <= num_parts:
         part_filename = f"{file_id}_part{part_num}{ext}"
         part_path = os.path.join(DOWNLOAD_FOLDER, part_filename)
-        
+
         # Calculate actual duration for this part (last part gets remaining time)
         if part_num == num_parts:
             part_duration = total_duration - start_time
         else:
             part_duration = duration_per_part
-        
+
         # Build FFmpeg command with proper re-encoding for feature phones
         if ext == '.mp3':
             # MP3 audio: re-encode with simple, compatible settings
@@ -2114,11 +2114,11 @@ def split_media_file(file_path, num_parts, file_id):
         else:
             logger.error(f"Unsupported format for splitting: {ext}")
             return None
-        
+
         try:
             logger.info(f"Creating part {part_num}/{num_parts} from {start_time}s to {start_time + part_duration}s...")
             result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
-            
+
             if result.returncode == 0 and os.path.exists(part_path) and os.path.getsize(part_path) > 0:
                 parts.append({
                     'filename': part_filename,
@@ -2132,17 +2132,17 @@ def split_media_file(file_path, num_parts, file_id):
                 logger.error(f"STDOUT: {result.stdout}")
                 logger.error(f"STDERR: {result.stderr}")
                 break
-                
+
         except subprocess.TimeoutExpired:
             logger.error(f"Timeout while creating part {part_num}")
             break
         except Exception as e:
             logger.error(f"Error splitting media part {part_num}: {str(e)}")
             break
-        
+
         start_time += part_duration
         part_num += 1
-    
+
     return parts if len(parts) > 0 else None
 
 @app.route('/split/<file_id>', methods=['POST'])
@@ -2151,7 +2151,7 @@ def split_file(file_id):
     # Find the file
     file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
     file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
-    
+
     file_path = None
     if os.path.exists(file_path_3gp):
         file_path = file_path_3gp
@@ -2160,27 +2160,27 @@ def split_file(file_id):
     else:
         flash('File not found or has been deleted')
         return redirect(url_for('status', file_id=file_id))
-    
+
     # Get number of parts requested
     try:
         num_parts = int(request.form.get('num_parts', 2))
-        
+
         # Validate range
         if num_parts < 2 or num_parts > 50:
             flash('Number of parts must be between 2 and 50')
             return redirect(url_for('status', file_id=file_id))
-        
+
         # Split with proper re-encoding for feature phones
         flash('Splitting file... This may take a few minutes as each part is being properly encoded for feature phone compatibility.')
         parts = split_media_file(file_path, num_parts, file_id)
-        
+
         if parts:
             flash(f'File split into {len(parts)} parts successfully! Each part has been properly encoded and will play on feature phones.')
             return redirect(url_for('split_downloads', file_id=file_id))
         else:
             flash('Failed to split file. Please try with fewer parts or check the logs.')
             return redirect(url_for('status', file_id=file_id))
-            
+
     except ValueError as e:
         flash('Invalid number of parts. Please enter a valid number.')
         return redirect(url_for('status', file_id=file_id))
@@ -2200,7 +2200,7 @@ def split_downloads(file_id):
             # Extract part number
             match = re.search(r'part(\d+)', filename)
             part_num = int(match.group(1)) if match else 0
-            
+
             parts.append({
                 'filename': filename,
                 'path': part_path,
@@ -2208,14 +2208,14 @@ def split_downloads(file_id):
                 'size_human': f"{os.path.getsize(part_path) / (1024 * 1024):.2f} MB",
                 'part_num': part_num
             })
-    
+
     # Sort by part number
     parts.sort(key=lambda x: x['part_num'])
-    
+
     if not parts:
         flash('No split parts found. File may have expired.')
         return redirect(url_for('index'))
-    
+
     return render_template('split_downloads.html', file_id=file_id, parts=parts)
 
 @app.route('/download_part/<filename>')
@@ -2225,14 +2225,14 @@ def download_part(filename):
     if '..' in filename or '/' in filename or '\\' in filename:
         flash('Invalid filename')
         return redirect(url_for('index'))
-    
+
     file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-    
+
     # Double-check the resolved path is still within DOWNLOAD_FOLDER
     if not os.path.abspath(file_path).startswith(os.path.abspath(DOWNLOAD_FOLDER)):
         flash('Invalid file path')
         return redirect(url_for('index'))
-    
+
     if os.path.exists(file_path):
         return send_file(file_path, as_attachment=True, download_name=filename)
     else:
@@ -2246,32 +2246,32 @@ def split_tool():
         # Handle split request
         file_id = request.form.get('file_id', '').strip()
         num_parts_str = request.form.get('num_parts', '').strip()
-        
+
         # Validate inputs
         if not file_id:
             flash('Invalid file selected')
             return redirect(url_for('split_tool'))
-        
+
         # Safely parse num_parts
         try:
             num_parts = int(num_parts_str)
         except (ValueError, TypeError):
             flash('Please enter a valid number of parts (2-50)')
             return redirect(url_for('split_tool'))
-        
+
         # Validate range
         if num_parts < 2 or num_parts > 50:
             flash('Number of parts must be between 2 and 50')
             return redirect(url_for('split_tool'))
-        
+
         # Find the file - sanitize file_id to prevent path traversal
         if '..' in file_id or '/' in file_id or '\\' in file_id:
             flash('Invalid file ID')
             return redirect(url_for('split_tool'))
-        
+
         file_path_3gp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.3gp')
         file_path_mp3 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
-        
+
         file_path = None
         if os.path.exists(file_path_3gp):
             file_path = file_path_3gp
@@ -2280,17 +2280,17 @@ def split_tool():
         else:
             flash('File not found or has been deleted')
             return redirect(url_for('split_tool'))
-        
+
         # Verify resolved path is within DOWNLOAD_FOLDER
         if not os.path.abspath(file_path).startswith(os.path.abspath(DOWNLOAD_FOLDER)):
             flash('Invalid file path')
             return redirect(url_for('split_tool'))
-        
+
         try:
             # Split with proper re-encoding for feature phones
             flash('Splitting file... This may take a few minutes as each part is being properly encoded for feature phone compatibility.')
             parts = split_media_file(file_path, num_parts, file_id)
-            
+
             if parts:
                 flash(f'File split into {len(parts)} parts successfully! Each part has been properly encoded and will play on feature phones.')
                 return redirect(url_for('split_downloads', file_id=file_id))
@@ -2301,7 +2301,7 @@ def split_tool():
             logger.error(f"Error splitting file: {str(e)}")
             flash('An error occurred while splitting the file.')
             return redirect(url_for('split_tool'))
-    
+
     # GET request - show available files
     files = []
     for filename in os.listdir(DOWNLOAD_FOLDER):
@@ -2310,10 +2310,10 @@ def split_tool():
             if '_part' not in filename:  # Skip already split parts
                 file_path = os.path.join(DOWNLOAD_FOLDER, filename)
                 file_id = os.path.splitext(filename)[0]
-                
+
                 # Get file info
                 info = get_file_info(file_path)
-                
+
                 files.append({
                     'filename': filename,
                     'file_id': file_id,
@@ -2324,29 +2324,29 @@ def split_tool():
                     'duration_human': info['duration_human'],
                     'duration_seconds': info['duration_seconds']
                 })
-    
+
     # Sort by newest first (based on filename which contains timestamp hash)
     files.sort(key=lambda x: x['filename'], reverse=True)
-    
+
     return render_template('split_tool.html', files=files)
 
 @app.route('/search', methods=['GET', 'POST'])
 def search():
     # Check if showing thumbnails (default: no, to save data on 2G)
     show_thumbnails = request.args.get('show_thumbnails', '0') == '1'
-    
+
     # Get query from POST (new search) or GET (thumbnail toggle)
     if request.method == 'POST':
         query = request.form.get('query', '').strip()
     else:
         query = request.args.get('query', '').strip()
-    
+
     # If no query, show the search form
     if not query:
         if request.method == 'POST':
             flash('Please enter a search term')
         return render_template('search.html', results=None, query='', show_thumbnails=show_thumbnails)
-    
+
     # Execute the search (query is guaranteed to exist here)
     try:
         # Use yt-dlp to search YouTube (no API key required)
@@ -2433,7 +2433,7 @@ def search():
 
                     # Get thumbnail URL (small thumbnail for 2G networks)
                     thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/default.jpg"
-                    
+
                     results.append({
                         'title': entry.get('title', 'Unknown'),
                         'url': final_url,
