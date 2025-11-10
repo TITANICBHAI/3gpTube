@@ -737,7 +737,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3gp=False):
     """
     Burn subtitles into video using MoviePy.
-    For 3GP: Single-line horizontal text optimized for feature phones (176x144)
+    For 3GP: Expand canvas to 240x240 and position subtitles BELOW 176x144 video
     For MP4: YouTube-style multi-line text
     
     IMPORTANT: Requires ImageMagick and fonts to be installed on the deployment platform.
@@ -748,7 +748,7 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         subtitle_path: Path to SRT subtitle file
         output_path: Path for output video with burned subtitles
         file_id: Unique file identifier for status updates
-        is_3gp: If True, use single-line text for feature phones
+        is_3gp: If True, expand canvas and position subs below video
     
     Returns:
         True if successful, False otherwise
@@ -776,26 +776,23 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         
         # Generator function for subtitles
         def generator(txt):
-            # For 3GP: very small font (7px) for 176x144 video on 240x320 screen
-            # Constrain to max 2 lines with width and height constraints
+            # For 3GP: small font for Nokia 5310 (240x320 screen, video at 176x144)
+            # Preserve line breaks for max 2 lines, positioned BELOW video
             # For MP4: multi-line text, larger font with preserved line breaks
-            fontsize = 7 if is_3gp else 18
+            fontsize = 12 if is_3gp else 18
             
             for font in font_options:
                 try:
                     if is_3gp:
-                        # For feature phones: Replace line breaks with spaces for compact display
-                        txt_clean = txt.replace('\n', ' ')
-                        
-                        # Constrain width to 160px and height to ~20px (max 2 lines at 7px font + padding)
-                        # This enforces max 2 lines - text beyond will be cut off
+                        # For feature phones: PRESERVE line breaks for YouTube-style 2-line display
+                        # Allow natural wrapping to max 2 lines
                         return TextClip(
-                            txt_clean, 
+                            txt, 
                             font=font if font else 'Arial',
                             fontsize=fontsize,
                             color='white',
                             bg_color='black',
-                            size=(160, 20),  # Width=160px, Height=20px for max 2 lines
+                            size=(230, None),  # Width=230px (fits 240px screen), auto height for wrapping
                             method='caption',
                             align='center',
                             stroke_color='black',
@@ -827,11 +824,34 @@ def burn_subtitles_moviepy(video_path, subtitle_path, output_path, file_id, is_3
         # Create subtitles clip
         subtitles = SubtitlesClip(subtitle_path, generator)
         
-        # Position subtitles at bottom
-        subtitles = subtitles.set_position(('center', 'bottom'))
-        
-        # Composite video with subtitles
-        final_video = CompositeVideoClip([video, subtitles])
+        # For 3GP: Expand canvas to fit subtitles below video
+        # Nokia 5310 screen is 240x320, video is 176x144
+        if is_3gp:
+            from moviepy.video.VideoClip import ColorClip
+            
+            # Create a taller canvas (240 wide x 240 tall) with black background
+            # This leaves 96px below the 144px video for subtitles
+            canvas_width = 240
+            canvas_height = 240
+            
+            # Create black background
+            background = ColorClip(size=(canvas_width, canvas_height), color=(0, 0, 0), duration=video.duration)
+            
+            # Position video at top-center of canvas
+            video_positioned = video.set_position(((canvas_width - video.w) // 2, 0))
+            
+            # Position subtitles at bottom of canvas (in the black space below video)
+            # Y position: video ends at 144px, subtitles go from ~150px to 230px
+            subtitles_positioned = subtitles.set_position(('center', canvas_height - 40))
+            
+            # Composite: background + video + subtitles
+            final_video = CompositeVideoClip([background, video_positioned, subtitles_positioned])
+        else:
+            # For MP4: Position subtitles at bottom of video (on top)
+            subtitles = subtitles.set_position(('center', 'bottom'))
+            
+            # Composite video with subtitles
+            final_video = CompositeVideoClip([video, subtitles])
         
         # Write output with memory-conscious settings for Render
         logger.info(f"Writing {video_type} with burned subtitles for {file_id}")
