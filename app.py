@@ -650,16 +650,16 @@ def convert_vtt_to_srt(vtt_path):
         logger.error(f"Failed to convert VTT to SRT: {str(e)[:200]}")
         return None
 
-def convert_srt_to_ass(srt_path, ass_path, video_width=176, video_height=144):
+def convert_srt_to_ass(srt_path, ass_path, video_width=320, video_height=240):
     """
     Convert SRT subtitles to ASS format with custom styling for feature phones.
-    Single-line horizontal scrolling text optimized for feature phone screens (176x144).
+    Single-line horizontal scrolling text optimized for feature phone screens (320x240).
 
     Args:
         srt_path: Path to SRT subtitle file
         ass_path: Path for output ASS file
-        video_width: Video width (default 176)
-        video_height: Video height (default 144)
+        video_width: Video width (default 320)
+        video_height: Video height (default 240)
 
     Returns:
         True if successful, False otherwise
@@ -780,8 +780,8 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
 Title: 3GP Dual-Line Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
-PlayResX: 176
-PlayResY: 144
+PlayResX: 320
+PlayResY: 240
 Collisions: Normal
 
 [V4+ Styles]
@@ -855,7 +855,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
         # Then escape colons for FFmpeg filter syntax
         escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
-        video_filter = f"scale=176:136:force_original_aspect_ratio=decrease,crop=176:136,pad=176:144:0:0,setsar=1,subtitles={escaped_ass_path}"
+        video_filter = f"scale=320:236:force_original_aspect_ratio=increase,crop=320:232,pad=320:240:0:0,setsar=1,subtitles={escaped_ass_path}"
 
         ffmpeg_cmd = [
             FFMPEG_PATH,
@@ -1395,7 +1395,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             convert_cmd = [
                 FFMPEG_PATH,
                 '-i', temp_video,
-                '-vf','scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
+                '-vf','scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                 '-vcodec', 'mpeg4',
                 '-r', quality_preset['fps'],  # FPS from preset
                 '-b:v', quality_preset['video_bitrate'],  # Video bitrate from preset
@@ -1446,7 +1446,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 simple_cmd = [
                     FFMPEG_PATH,
                     '-i', temp_video,
-                    '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
+                    '-vf', 'scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                     '-vcodec', 'mpeg4',
                     '-r', '15',
                     '-b:v', '200k',
@@ -2111,7 +2111,7 @@ def split_media_file(file_path, num_parts, file_id):
                 '-i', file_path,
                 '-t', str(part_duration),
                 '-c:v', 'h263',
-                '-vf', 'scale=176:144:force_original_aspect_ratio=decrease,setsar=1',
+                '-vf', 'scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                 '-b:v', '64k',
                 '-r', '15',
                 '-g', '15',
