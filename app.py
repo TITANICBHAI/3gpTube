@@ -858,6 +858,19 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         # Order: Mobile clients (least blocked) -> TV clients -> Web clients (fallback)
         strategies = [
             {
+                'name': 'Android Test Suite (Nov 2024 - Most Reliable)',
+                'opts': {
+                    'extractor_args': {'youtube': {
+                        'player_client': ['android_testsuite'],
+                        'player_skip': ['configs', 'webpage', 'js']
+                    }},
+                    'http_headers': {
+                        'User-Agent': 'com.google.android.youtube/19.45.38 (Linux; U; Android 14; en_US)',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                    }
+                }
+            },
+            {
                 'name': 'Android Client (Primary)',
                 'opts': {
                     'extractor_args': {'youtube': {
@@ -994,20 +1007,20 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         for i, strategy in enumerate(strategies):
             try:
                 if i > 0:
-                    # Exponential backoff between strategies: 2s, 4s, 8s, 12s, 15s, 20s
-                    # This prevents rate limiting when switching download methods
+                    # Faster retry delays: 1s, 2s, 3s, 5s, 8s, 10s
+                    # Quick retries for first strategies, longer delays if still failing
                     if i == 1:
-                        delay = 2
+                        delay = 1
                     elif i == 2:
-                        delay = 4
+                        delay = 2
                     elif i == 3:
-                        delay = 8
+                        delay = 3
                     elif i == 4:
-                        delay = 12
+                        delay = 5
                     elif i == 5:
-                        delay = 15
+                        delay = 8
                     else:
-                        delay = 20
+                        delay = 10
                     
                     update_status(file_id, {
                         'status': 'downloading',
