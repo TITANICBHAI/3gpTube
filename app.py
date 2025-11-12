@@ -504,90 +504,138 @@ def validate_cookies():
     except Exception as e:
         return False, f"Error reading cookies: {str(e)}"
 
-def download_subtitles(url, file_id):
+def download_subtitles(url, file_id, max_retries=3):
     """
     Download English subtitles (manual or auto-generated) from YouTube using yt-dlp.
     Returns the path to the subtitle file if successful, None otherwise.
     Supports both SRT and VTT formats (YouTube primarily uses VTT for auto-captions).
+    
+    Args:
+        url: YouTube video URL
+        file_id: Unique identifier for the file
+        max_retries: Maximum number of retry attempts (default: 3)
     """
     subtitle_path_srt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.srt')
     subtitle_path_vtt = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.en.vtt')
 
-    try:
-        ydl_opts = {
-            'writesubtitles': True,
-            'writeautomaticsub': True,
-            'subtitleslangs': ['en'],
-            'skip_download': True,
-            'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{file_id}'),
-            'quiet': True,
-            'no_warnings': True,
-            'socket_timeout': 30,
-            'retries': 5,
-            # 2025 anti-throttling/anti-bot measures
-            'sleep_interval': 2,
-            'max_sleep_interval': 5,
-            'http_chunk_size': 2097152,  # 2MB chunks (mimics YouTube app)
-        }
-
-        # Add cookies if available for better subtitle access
-        if has_cookies():
-            ydl_opts['cookiefile'] = COOKIES_FILE
-
-        logger.info(f"Attempting to download English subtitles for {file_id}")
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        # Check for SRT file first, then VTT (YouTube uses VTT for auto-captions)
-        if os.path.exists(subtitle_path_srt) and os.path.getsize(subtitle_path_srt) > 0:
-            logger.info(f"✓ English subtitles (SRT) downloaded successfully: {subtitle_path_srt}")
-            return subtitle_path_srt
-        elif os.path.exists(subtitle_path_vtt) and os.path.getsize(subtitle_path_vtt) > 0:
-            logger.info(f"✓ English subtitles (VTT) downloaded, converting to SRT...")
-            # Convert VTT to SRT for MoviePy compatibility
-            srt_path = convert_vtt_to_srt(subtitle_path_vtt)
-            if srt_path and os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
-                # Clean up VTT file after successful conversion
-                try:
-                    os.remove(subtitle_path_vtt)
-                except:
-                    pass
-                return srt_path
+    for attempt in range(max_retries):
+        try:
+            # Only clean up on retry (not first attempt)
+            if attempt > 0:
+                logger.info(f"Retry attempt {attempt + 1}/{max_retries} for subtitle download: {file_id}")
+                # Clean up any previous failed attempts
+                for path in [subtitle_path_srt, subtitle_path_vtt]:
+                    if os.path.exists(path):
+                        try:
+                            os.remove(path)
+                        except:
+                            pass
             else:
-                # Conversion failed - subtitle burning won't work, return None
-                logger.warning(f"VTT to SRT conversion failed for {file_id}. Subtitle burning will be skipped.")
-                try:
-                    if os.path.exists(subtitle_path_vtt):
-                        os.remove(subtitle_path_vtt)
-                except:
-                    pass
-                return None
-        else:
-            logger.info(f"No English subtitles available for {file_id}")
-            return None
+                logger.info(f"Attempting to download English subtitles for {file_id}")
 
-    except Exception as e:
-        error_msg = str(e)
-        if '429' in error_msg or 'Too Many Requests' in error_msg:
-            logger.warning(f"YouTube rate limit hit when downloading subtitles for {file_id}. Upload cookies to bypass rate limits.")
-        else:
-            logger.warning(f"Could not download subtitles for {file_id}: {error_msg[:150]}")
-        return None
+            ydl_opts = {
+                'writesubtitles': True,
+                'writeautomaticsub': True,
+                'subtitleslangs': ['en'],
+                'skip_download': True,
+                'outtmpl': os.path.join(DOWNLOAD_FOLDER, f'{file_id}'),
+                'quiet': True,
+                'no_warnings': True,
+                'socket_timeout': 60,  # Increased timeout
+                'retries': 10,  # More internal retries
+                # 2025 anti-throttling/anti-bot measures
+                'sleep_interval': 2,
+                'max_sleep_interval': 5,
+                'http_chunk_size': 2097152,  # 2MB chunks (mimics YouTube app)
+            }
+
+            # Add cookies if available for better subtitle access
+            if has_cookies():
+                ydl_opts['cookiefile'] = COOKIES_FILE
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            # Check for SRT file first, then VTT (YouTube uses VTT for auto-captions)
+            if os.path.exists(subtitle_path_srt) and os.path.getsize(subtitle_path_srt) > 0:
+                logger.info(f"✓ English subtitles (SRT) downloaded successfully: {subtitle_path_srt}")
+                return subtitle_path_srt
+            elif os.path.exists(subtitle_path_vtt) and os.path.getsize(subtitle_path_vtt) > 0:
+                logger.info(f"✓ English subtitles (VTT) downloaded, converting to SRT...")
+                # Convert VTT to SRT for FFmpeg compatibility
+                srt_path = convert_vtt_to_srt(subtitle_path_vtt)
+                if srt_path and os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
+                    # Clean up VTT file after successful conversion
+                    try:
+                        os.remove(subtitle_path_vtt)
+                    except:
+                        pass
+                    logger.info(f"✓ VTT to SRT conversion successful: {srt_path}")
+                    return srt_path
+                else:
+                    # Conversion failed - clean up and retry
+                    logger.warning(f"VTT to SRT conversion failed for {file_id} (attempt {attempt + 1}/{max_retries})")
+                    try:
+                        if os.path.exists(subtitle_path_vtt):
+                            os.remove(subtitle_path_vtt)
+                    except:
+                        pass
+                    
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                        logger.info(f"Waiting {wait_time}s before retry...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        return None
+            else:
+                logger.info(f"No English subtitles available for {file_id} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    logger.info(f"Retrying subtitle download in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    return None
+
+        except Exception as e:
+            error_msg = str(e)
+            if '429' in error_msg or 'Too Many Requests' in error_msg:
+                logger.warning(f"YouTube rate limit hit when downloading subtitles for {file_id} (attempt {attempt + 1}/{max_retries}). Upload cookies to bypass rate limits.")
+            else:
+                logger.warning(f"Could not download subtitles for {file_id} (attempt {attempt + 1}/{max_retries}): {error_msg[:150]}")
+            
+            # Retry with exponential backoff
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Failed to download subtitles after {max_retries} attempts")
+                return None
+    
+    return None
 
 def convert_vtt_to_srt(vtt_path):
     """
     Convert VTT subtitle file to SRT format.
-    MoviePy's SubtitlesClip requires properly formatted SRT.
+    FFmpeg's subtitle filter requires properly formatted SRT.
     Handles timestamp conversion, cue numbering, and VTT metadata removal.
+    Maintains subtitle quality and formatting from original VTT.
     """
     try:
         import re
 
         srt_path = vtt_path.replace('.vtt', '.srt')
 
-        with open(vtt_path, 'r', encoding='utf-8') as vtt_file:
-            lines = vtt_file.readlines()
+        # Read VTT file with proper encoding handling
+        try:
+            with open(vtt_path, 'r', encoding='utf-8') as vtt_file:
+                lines = vtt_file.readlines()
+        except UnicodeDecodeError:
+            # Fallback to other encodings if UTF-8 fails
+            with open(vtt_path, 'r', encoding='latin-1') as vtt_file:
+                lines = vtt_file.readlines()
 
         srt_lines = []
         cue_number = 1
@@ -596,8 +644,10 @@ def convert_vtt_to_srt(vtt_path):
         while i < len(lines):
             line = lines[i].strip()
 
-            # Skip WEBVTT header, Kind:, Language:, NOTE, and empty lines at the start
-            if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:') or line.startswith('NOTE') or not line:
+            # Skip WEBVTT header, Kind:, Language:, NOTE, Style:, and empty lines at the start
+            if (line.startswith('WEBVTT') or line.startswith('Kind:') or 
+                line.startswith('Language:') or line.startswith('NOTE') or 
+                line.startswith('Style:') or line.startswith('STYLE') or not line):
                 i += 1
                 continue
 
@@ -621,10 +671,13 @@ def convert_vtt_to_srt(vtt_path):
                 subtitle_text = []
                 while i < len(lines) and lines[i].strip():
                     text_line = lines[i].strip()
-                    # Remove VTT-specific tags
+                    # Remove VTT-specific tags while preserving subtitle content quality
                     text_line = re.sub(r'<[^>]+>', '', text_line)  # HTML tags
                     text_line = re.sub(r'</?c[^>]*>', '', text_line)  # <c> color tags
                     text_line = re.sub(r'\{[^}]+\}', '', text_line)  # CSS-like tags
+                    # Remove positioning/alignment tags
+                    text_line = re.sub(r'align:start|align:middle|align:end', '', text_line)
+                    text_line = text_line.strip()
                     if text_line:
                         subtitle_text.append(text_line)
                     i += 1
@@ -639,15 +692,27 @@ def convert_vtt_to_srt(vtt_path):
                 # Skip cue identifiers or other VTT metadata
                 i += 1
 
-        # Write SRT file
+        # Validate conversion - ensure we got subtitle content
+        if cue_number <= 1:
+            logger.error(f"VTT conversion failed - no subtitle cues found in {vtt_path}")
+            return None
+
+        # Write SRT file with UTF-8 encoding
         with open(srt_path, 'w', encoding='utf-8') as srt_file:
             srt_file.write('\n'.join(srt_lines))
+
+        # Verify output file
+        if not os.path.exists(srt_path) or os.path.getsize(srt_path) == 0:
+            logger.error(f"VTT to SRT conversion produced empty file: {srt_path}")
+            return None
 
         logger.info(f"✓ Converted VTT to SRT: {srt_path} ({cue_number-1} cues)")
         return srt_path
 
     except Exception as e:
         logger.error(f"Failed to convert VTT to SRT: {str(e)[:200]}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()[:500]}")
         return None
 
 def convert_srt_to_ass(srt_path, ass_path, video_width=320, video_height=240):
