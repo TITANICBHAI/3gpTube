@@ -445,7 +445,7 @@ def get_video_duration(file_path):
             '-of', 'default=noprint_wrappers=1:nokey=1',
             file_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=None)
         if result.returncode == 0:
             return float(result.stdout.strip())
         return 0
@@ -1117,7 +1117,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             output_path
         ]
 
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
 
         if result.returncode != 0:
             # Attempt 2: Simpler encoding (same quality, no advanced compression)
@@ -1142,7 +1142,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
                 output_path
             ]
             
-            result = subprocess.run(simple_ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(simple_ffmpeg_cmd, capture_output=True, text=True, timeout=None)
             
             if result.returncode != 0:
                 error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
@@ -1818,10 +1818,11 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         })
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Timeout processing {file_id}")
+        # This should never happen since we removed all processing timeouts
+        logger.error(f"Unexpected timeout processing {file_id}")
         update_status(file_id, {
             'status': 'failed',
-            'progress': 'Error: Processing timeout. Video may be too long or server is busy. Try a shorter video.'
+            'progress': 'Error: Unexpected processing timeout occurred.'
         })
         if os.path.exists(temp_video):
             try:
@@ -2307,7 +2308,7 @@ def get_file_info(file_path):
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 file_path
             ]
-            result = subprocess.run(ffprobe_cmd, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(ffprobe_cmd, capture_output=True, text=True, timeout=None)
             if result.returncode == 0 and result.stdout.strip():
                 duration_seconds = float(result.stdout.strip())
                 info['duration_seconds'] = int(duration_seconds)
