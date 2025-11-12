@@ -6,6 +6,25 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 ## Recent Changes
 
+**November 12, 2025 - Quality Preservation & Subtitle Burning Reliability**
+- ✓ **Quality Preservation Across All Retry Scenarios:**
+  - Fixed simpler retry logic to preserve user's selected quality (high, low, medium, etc.)
+  - Previously hardcoded low-quality values for retries, now uses selected quality preset
+  - Applies to both MP3 and 3GP conversions
+  - Retry removes advanced compression flags but keeps same bitrate, fps, sample rate
+- ✓ **Enhanced Subtitle Burning Reliability:**
+  - Created convert_srt_to_dual_line_ass() helper for modular SRT→ASS conversion
+  - Added 3-attempt SRT→ASS conversion retry:
+    1. Initial conversion attempt
+    2. Immediate retry if failed
+    3. Re-download subtitles from YouTube and convert if still failing
+  - Added 2-attempt FFmpeg burning retry:
+    1. Full compression + selected quality
+    2. Simpler settings (same quality, removes trellis/mbd/cmp/subcmp) if failed
+  - Subtitle text appearance unchanged across retries (controlled by ASS styling, not compression)
+  - Graceful degradation with detailed status updates at each retry stage
+  - Added url parameter to burn_subtitles_ffmpeg_3gp() to enable subtitle re-downloading
+
 **November 12, 2025 - Cookie System Hardening & Subtitle Enhancements**
 - ✓ **Cookie System Major Improvements:**
   - Created centralized get_valid_cookiefile() helper with cookie health validation
