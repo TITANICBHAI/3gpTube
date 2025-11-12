@@ -6,6 +6,24 @@ This is a Flask-based web application that converts YouTube videos to feature ph
 
 ## Recent Changes
 
+**November 12, 2025 - Cookie System Hardening & Subtitle Enhancements**
+- ✓ **Cookie System Major Improvements:**
+  - Created centralized get_valid_cookiefile() helper with cookie health validation
+  - Enhanced validate_cookies() with expiry detection (7-day warning threshold)
+  - Added expired cookie counting and malformed line tracking
+  - Atomic file writes with 2MB size limit and encoding auto-detection (UTF-8 + Latin-1 fallback)
+  - Detailed logging and health metrics for debugging
+  - Integrated cookie validation in all yt-dlp paths (download, search, playlist, subtitles)
+- ✓ **Subtitle Download Improvements:**
+  - Added 3-retry mechanism with exponential backoff (1s, 2s, 4s delays)
+  - Improved VTT to SRT conversion with encoding fallback and validation
+  - Better error handling and detailed logging for subtitle failures
+  - **REMOVED subtitle limits** - now unlimited (was 45min/500MB, now infinite)
+- ✓ **Playlist Subtitle Support:**
+  - Verified burn_subtitles parameter passes through entire playlist chain
+  - Works identically to single-video subtitle burning
+  - Error messages properly surfaced for geo-restricted videos
+
 **November 10, 2025 - Production Deployment Configuration**
 - ✓ Fixed None comparison bug in MAX_VIDEO_DURATION check (caused conversion failures)
 - ✓ Created complete Render/Docker deployment setup optimized for FREE TIER (512MB RAM, 0.1 vCPU)

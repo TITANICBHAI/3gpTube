@@ -71,9 +71,9 @@ MAX_CONCURRENT_DOWNLOADS = int(os.environ.get('MAX_CONCURRENT_DOWNLOADS', 1))
 ENABLE_DISK_SPACE_MONITORING = os.environ.get('ENABLE_DISK_SPACE_MONITORING', 'true').lower() == 'true'
 DISK_SPACE_THRESHOLD_MB = int(os.environ.get('DISK_SPACE_THRESHOLD_MB', 1500))  # Alert when < 1.5GB free
 
-# Subtitle burning settings (for Render resource constraints)
-SUBTITLE_MAX_DURATION_MINS = int(os.environ.get('SUBTITLE_MAX_DURATION_MINS', 45))  # Max 45 min for subtitle burning
-SUBTITLE_MAX_FILESIZE_MB = int(os.environ.get('SUBTITLE_MAX_FILESIZE_MB', 500))  # Max 500MB for subtitle burning
+# Subtitle burning settings (unlimited by default)
+SUBTITLE_MAX_DURATION_MINS = None  # Unlimited subtitle burning duration
+SUBTITLE_MAX_FILESIZE_MB = None  # Unlimited subtitle burning file size
 ENABLE_SUBTITLE_BURNING = os.environ.get('ENABLE_SUBTITLE_BURNING', 'true').lower() == 'true'
 
 # Quality presets for MP3 audio conversion
@@ -1519,12 +1519,13 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if burn_subtitles and ENABLE_SUBTITLE_BURNING and output_format != 'mp3':
             # Check resource limits for subtitle burning (Render constraints)
             duration_mins = duration / 60
-            if duration_mins > SUBTITLE_MAX_DURATION_MINS:
+            # Check subtitle limits if they are set (None = unlimited)
+            if SUBTITLE_MAX_DURATION_MINS is not None and duration_mins > SUBTITLE_MAX_DURATION_MINS:
                 logger.warning(f"Video too long for subtitle burning: {duration_mins:.1f} mins > {SUBTITLE_MAX_DURATION_MINS} mins limit")
                 update_status(file_id, {
                     'progress': f'⚠️ Subtitle burning skipped: Video is {duration_mins:.1f} minutes (limit: {SUBTITLE_MAX_DURATION_MINS} mins for resource constraints)'
                 })
-            elif file_size_mb > SUBTITLE_MAX_FILESIZE_MB:
+            elif SUBTITLE_MAX_FILESIZE_MB is not None and file_size_mb > SUBTITLE_MAX_FILESIZE_MB:
                 logger.warning(f"Video too large for subtitle burning: {file_size_mb:.1f}MB > {SUBTITLE_MAX_FILESIZE_MB}MB limit")
                 update_status(file_id, {
                     'progress': f'⚠️ Subtitle burning skipped: Video is {file_size_mb:.1f}MB (limit: {SUBTITLE_MAX_FILESIZE_MB}MB for resource constraints)'
