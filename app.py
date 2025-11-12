@@ -1613,32 +1613,35 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             logger.error(f"FFmpeg conversion failed for {file_id}: {error_msg}")
 
             # Retry once with simpler encoding if first attempt fails
-            logger.info(f"Retrying conversion with simpler settings for {file_id}")
+            # Uses SAME quality settings but removes advanced compression options
+            logger.info(f"Retrying conversion with simpler settings (same quality: {quality_preset['name']}) for {file_id}")
 
             if output_format == 'mp3':
+                # Simpler MP3 conversion - uses same quality preset but removes advanced options
                 simple_cmd = [
                     FFMPEG_PATH,
                     '-i', temp_video,
                     '-vn',
                     '-acodec', 'libmp3lame',
-                    '-ar', '16000',
-                    '-b:a', '32k',
-                    '-ac', '1',
+                    '-ar', quality_preset['sample_rate'],  # Use selected quality
+                    '-b:a', quality_preset['bitrate'],  # Use selected quality
+                    '-ac', '2',  # Stereo as per preset
 
                     '-y',
                     output_path
                 ]
             else:
+                # Simpler 3GP conversion - uses same quality preset but removes advanced options
                 simple_cmd = [
                     FFMPEG_PATH,
                     '-i', temp_video,
                     '-vf', 'scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                     '-vcodec', 'mpeg4',
-                    '-r', '15',
-                    '-b:v', '200k',
+                    '-r', quality_preset['fps'],  # Use selected quality
+                    '-b:v', quality_preset['video_bitrate'],  # Use selected quality
                     '-acodec', 'aac',
-                    '-ar', '16000',
-                    '-b:a', '24k',
+                    '-ar', quality_preset['audio_sample_rate'],  # Use selected quality
+                    '-b:a', quality_preset['audio_bitrate'],  # Use selected quality
                     '-ac', '1',
 
                     '-y',
