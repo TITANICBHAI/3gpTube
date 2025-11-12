@@ -1752,6 +1752,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if not os.path.exists(output_path):
             raise Exception("Conversion failed: Output file not created")
 
+        # Track if subtitles were requested but failed
+        subtitle_burn_failed = False
+        
         # Burn subtitles into 3GP AFTER conversion if requested
         if subtitle_file and output_format == '3gp':
             output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
@@ -1773,8 +1776,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 })
             else:
                 logger.warning(f"Subtitle burning failed, using 3GP without subtitles")
+                subtitle_burn_failed = True
                 update_status(file_id, {
-                    'progress': '⚠️ Subtitle burning failed. Using video without subtitles...'
+                    'progress': '⚠️ SUBTITLE BURNING FAILED - Your video is ready but WITHOUT SUBTITLES. All retry attempts exhausted.'
                 })
                 # Clean up failed attempt
                 if os.path.exists(output_with_subs):
@@ -1788,16 +1792,25 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 os.remove(subtitle_file)
             except:
                 pass
+        
+        # Check if user requested subs but didn't get them
+        elif burn_subtitles and ENABLE_SUBTITLE_BURNING and output_format == '3gp' and not subtitle_file:
+            subtitle_burn_failed = True
 
         final_size = os.path.getsize(output_path)
         final_size_mb = final_size / (1024 * 1024)
 
         # Use correct filename extension based on format
         filename_with_ext = f'{file_id}.{file_extension}'
+        
+        # Build completion message with subtitle status if relevant
+        completion_message = f'Conversion complete! Duration: {duration/60:.1f} min, File size: {final_size_mb:.2f} MB'
+        if subtitle_burn_failed:
+            completion_message += ' ⚠️ (WITHOUT SUBTITLES - burning failed)'
 
         update_status(file_id, {
             'status': 'completed',
-            'progress': f'Conversion complete! Duration: {duration/60:.1f} min, File size: {final_size_mb:.2f} MB',
+            'progress': completion_message,
             'filename': filename_with_ext,
             'file_size': final_size,
             'duration': duration,
