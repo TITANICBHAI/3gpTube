@@ -50,11 +50,12 @@ def parse_filesize(size_str):
             return int(float(size_str[:-1]) * multiplier)
     return int(size_str)
 
-MAX_VIDEO_DURATION = None  # Unlimited video duration
-DOWNLOAD_TIMEOUT = None  # Unlimited download timeout
-CONVERSION_TIMEOUT = None  # Unlimited conversion timeout
+# Resource limits optimized for Render free tier (0.1 CPU, 512MB RAM, 15-min request timeout)
+# Can be overridden via environment variables for local development or paid tiers
+MAX_VIDEO_DURATION = int(os.environ.get('MAX_VIDEO_DURATION', 1800))  # 30 minutes default (fits in 15-min Render timeout)
+DOWNLOAD_TIMEOUT = None  # Unlimited download timeout (network timeouts handled by yt-dlp)
 FILE_RETENTION_HOURS = int(os.environ.get('FILE_RETENTION_HOURS', 6))
-MAX_FILESIZE = parse_filesize(os.environ.get('MAX_FILESIZE', '1000M'))  # 500MB for Render free tier (2GB /tmp total)
+MAX_FILESIZE = parse_filesize(os.environ.get('MAX_FILESIZE', '500M'))  # 500MB for Render free tier (512MB RAM limit)
 
 # Playlist storage
 PLAYLIST_STATUS_FILE = '/tmp/playlist_status.json'
@@ -71,10 +72,14 @@ MAX_CONCURRENT_DOWNLOADS = int(os.environ.get('MAX_CONCURRENT_DOWNLOADS', 1))
 ENABLE_DISK_SPACE_MONITORING = os.environ.get('ENABLE_DISK_SPACE_MONITORING', 'true').lower() == 'true'
 DISK_SPACE_THRESHOLD_MB = int(os.environ.get('DISK_SPACE_THRESHOLD_MB', 1500))  # Alert when < 1.5GB free
 
-# Subtitle burning settings (unlimited by default)
-SUBTITLE_MAX_DURATION_MINS = None  # Unlimited subtitle burning duration
-SUBTITLE_MAX_FILESIZE_MB = None  # Unlimited subtitle burning file size
+# Subtitle burning settings - optimized for Render free tier CPU constraints
+# Unlimited for local/powerful servers, but limited by MAX_VIDEO_DURATION on Render
+SUBTITLE_MAX_DURATION_MINS = int(os.environ.get('SUBTITLE_MAX_DURATION_MINS', 45)) if os.environ.get('SUBTITLE_MAX_DURATION_MINS') else None
+SUBTITLE_MAX_FILESIZE_MB = int(os.environ.get('SUBTITLE_MAX_FILESIZE_MB', 300)) if os.environ.get('SUBTITLE_MAX_FILESIZE_MB') else None
 ENABLE_SUBTITLE_BURNING = os.environ.get('ENABLE_SUBTITLE_BURNING', 'true').lower() == 'true'
+
+# FFmpeg performance settings for CPU-constrained environments
+FFMPEG_THREADS = int(os.environ.get('FFMPEG_THREADS', 1))  # Limit to 1 thread on Render free tier (0.1 CPU)
 
 # Quality presets for MP3 audio conversion
 # Note: Minimum 128kbps to avoid YouTube download errors with low bitrate
@@ -435,6 +440,29 @@ def clean_tmp_immediately():
     except Exception as e:
         logger.error(f"Emergency cleanup failed: {e}")
         return 0
+
+def run_ffmpeg(args, timeout=None, **kwargs):
+    """
+    Centralized FFmpeg wrapper that injects CPU/thread limits for Render free tier.
+    
+    Args:
+        args: List of FFmpeg arguments (WITHOUT the ffmpeg binary path)
+        timeout: Optional timeout in seconds
+        **kwargs: Additional subprocess.run arguments
+    
+    Returns:
+        subprocess.CompletedProcess result
+    """
+    # Build command with thread limiting for CPU-constrained environments
+    cmd = [
+        FFMPEG_PATH,
+        '-threads', str(FFMPEG_THREADS),  # Limit FFmpeg threads
+    ] + args
+    
+    # Also limit OpenMP threads (used by some codecs)
+    env = dict(os.environ, OMP_NUM_THREADS=str(FFMPEG_THREADS))
+    
+    return subprocess.run(cmd, env=env, timeout=timeout, **kwargs)
 
 def get_video_duration(file_path):
     try:
@@ -1091,7 +1119,6 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
         # Attempt 1: Full compression + user's selected quality
         logger.info(f"Burning subtitles with full compression ({quality_preset['name']})...")
         ffmpeg_cmd = [
-            FFMPEG_PATH,
             '-i', video_path,
             '-vf', video_filter,
             '-vcodec', 'mpeg4',
@@ -1117,7 +1144,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             output_path
         ]
 
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
+        result = run_ffmpeg(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
 
         if result.returncode != 0:
             # Attempt 2: Simpler encoding (same quality, no advanced compression)
@@ -1128,7 +1155,6 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
             
             # Simpler FFmpeg command - removes advanced compression but keeps user's quality
             simple_ffmpeg_cmd = [
-                FFMPEG_PATH,
                 '-i', video_path,
                 '-vf', video_filter,
                 '-vcodec', 'mpeg4',
@@ -1142,7 +1168,7 @@ def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, q
                 output_path
             ]
             
-            result = subprocess.run(simple_ffmpeg_cmd, capture_output=True, text=True, timeout=None)
+            result = run_ffmpeg(simple_ffmpeg_cmd, capture_output=True, text=True, timeout=None)
             
             if result.returncode != 0:
                 error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
@@ -1634,7 +1660,6 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             # MP3 conversion with quality preset and ENHANCED compression
             # All presets use stereo (2 channels) as described in the preset descriptions
             convert_cmd = [
-                FFMPEG_PATH,
                 '-i', temp_video,
                 '-vn',  # No video
                 '-acodec', 'libmp3lame',
@@ -1644,7 +1669,6 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 '-q:a', quality_preset['vbr_quality'],  # VBR quality from preset
                 '-compression_level', '9',  # Maximum compression (smaller files, slightly slower)
                 '-joint_stereo', '1',  # Better stereo compression (5-10% smaller)
-
                 '-y',
                 output_path
             ]
@@ -1662,7 +1686,6 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             gop_size = fps_num * 10  # GOP every 10 seconds for better compression
 
             convert_cmd = [
-                FFMPEG_PATH,
                 '-i', temp_video,
                 '-vf','scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                 '-vcodec', 'mpeg4',
@@ -1683,13 +1706,12 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 '-ar', quality_preset['audio_sample_rate'],  # Audio sample rate from preset
                 '-b:a', quality_preset['audio_bitrate'],  # Audio bitrate from preset
                 '-ac', '1',
-
                 '-y',
                 output_path
             ]
 
         dynamic_timeout = None  # No timeout for conversions
-        result = subprocess.run(convert_cmd, capture_output=True, text=True, timeout=dynamic_timeout)
+        result = run_ffmpeg(convert_cmd, capture_output=True, text=True, timeout=dynamic_timeout)
 
         if result.returncode != 0:
             error_msg = result.stderr[:300] if result.stderr else "Unknown FFmpeg error"
@@ -1702,21 +1724,18 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             if output_format == 'mp3':
                 # Simpler MP3 conversion - uses same quality preset but removes advanced options
                 simple_cmd = [
-                    FFMPEG_PATH,
                     '-i', temp_video,
                     '-vn',
                     '-acodec', 'libmp3lame',
                     '-ar', quality_preset['sample_rate'],  # Use selected quality
                     '-b:a', quality_preset['bitrate'],  # Use selected quality
                     '-ac', '2',  # Stereo as per preset
-
                     '-y',
                     output_path
                 ]
             else:
                 # Simpler 3GP conversion - uses same quality preset but removes advanced options
                 simple_cmd = [
-                    FFMPEG_PATH,
                     '-i', temp_video,
                     '-vf', 'scale=320:240:force_original_aspect_ratio=increase,setsar=1',
                     '-vcodec', 'mpeg4',
@@ -1726,12 +1745,11 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     '-ar', quality_preset['audio_sample_rate'],  # Use selected quality
                     '-b:a', quality_preset['audio_bitrate'],  # Use selected quality
                     '-ac', '1',
-
                     '-y',
                     output_path
                 ]
 
-            retry_result = subprocess.run(simple_cmd, capture_output=True, text=True, timeout=dynamic_timeout)
+            retry_result = run_ffmpeg(simple_cmd, capture_output=True, text=True, timeout=dynamic_timeout)
 
             if retry_result.returncode != 0:
                 # Clean up temp file before raising exception
@@ -2376,7 +2394,6 @@ def split_media_file(file_path, num_parts, file_id):
         if ext == '.mp3':
             # MP3 audio: re-encode with simple, compatible settings
             ffmpeg_cmd = [
-                FFMPEG_PATH,
                 '-ss', str(start_time),
                 '-i', file_path,
                 '-t', str(part_duration),
@@ -2392,7 +2409,6 @@ def split_media_file(file_path, num_parts, file_id):
             # 3GP video: re-encode with H.263 video + AMR-NB audio for maximum feature phone compatibility
             # AMR-NB (Adaptive Multi-Rate Narrowband) is the standard audio codec for 3GP on feature phones
             ffmpeg_cmd = [
-                FFMPEG_PATH,
                 '-ss', str(start_time),
                 '-i', file_path,
                 '-t', str(part_duration),
@@ -2415,7 +2431,7 @@ def split_media_file(file_path, num_parts, file_id):
 
         try:
             logger.info(f"Creating part {part_num}/{num_parts} from {start_time}s to {start_time + part_duration}s...")
-            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
+            result = run_ffmpeg(ffmpeg_cmd, capture_output=True, text=True, timeout=None)
 
             if result.returncode == 0 and os.path.exists(part_path) and os.path.getsize(part_path) > 0:
                 parts.append({
