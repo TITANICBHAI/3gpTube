@@ -330,8 +330,9 @@ def extract_playlist_info(url):
             'force_generic_extractor': False,
             'socket_timeout': 60,
         }
-        if has_cookies():
-            ydl_opts['cookiefile'] = COOKIES_FILE
+        cookiefile = get_valid_cookiefile()
+        if cookiefile:
+            ydl_opts['cookiefile'] = cookiefile
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -452,57 +453,171 @@ def get_video_duration(file_path):
         return 0
 
 def has_cookies():
+    """Check if cookie file exists and is not empty"""
     return os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0
 
-def validate_cookies():
+def get_valid_cookiefile():
+    """
+    Centralized cookie health check for background operations.
+    Returns the cookie file path if valid and healthy, None otherwise.
+    Logs warnings for expired or problematic cookies.
+    """
     if not has_cookies():
-        return False, "No cookies file found"
+        return None
+    
+    try:
+        is_valid, message, health = validate_cookies()
+        
+        if not is_valid:
+            logger.warning(f"Cookie validation failed: {message}")
+            return None
+        
+        # Warn about cookie health issues
+        if health.get('expired_count', 0) > 0:
+            logger.warning(f"⚠ {health['expired_count']} expired cookies detected - may cause download failures")
+        
+        if health.get('expiring_soon', False):
+            days_left = (health.get('earliest_expiry', 0) - int(time.time())) // 86400 if health.get('earliest_expiry') else 0
+            logger.warning(f"⚠ Some cookies expire in {days_left} days - consider refreshing soon")
+        
+        if health.get('malformed_lines', 0) > 0:
+            logger.info(f"Skipped {health['malformed_lines']} malformed cookie lines")
+        
+        logger.info(f"Using cookies: {health.get('cookie_count', 0)} YouTube cookies, {len(health.get('session_cookies', []))} session cookies")
+        return COOKIES_FILE
+        
+    except Exception as e:
+        logger.error(f"Cookie validation error: {str(e)[:100]}")
+        return None
+
+def validate_cookies():
+    """
+    Enhanced cookie validation with expiry detection, robust parsing, and detailed health reporting.
+    Returns: (is_valid, message, health_dict)
+    """
+    if not has_cookies():
+        return False, "No cookies file found", {}
+
+    health = {
+        'cookie_count': 0,
+        'session_cookies': [],
+        'expired_count': 0,
+        'expiring_soon': False,
+        'malformed_lines': 0,
+        'earliest_expiry': None
+    }
 
     try:
-        with open(COOKIES_FILE, 'r') as f:
-            content = f.read()
+        # Read with encoding detection
+        try:
+            with open(COOKIES_FILE, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            logger.warning("Cookie file not UTF-8, trying Latin-1 encoding")
+            with open(COOKIES_FILE, 'r', encoding='latin-1') as f:
+                content = f.read()
 
-            if 'youtube.com' not in content.lower():
-                return False, "Cookie file does not contain YouTube cookies"
+        if 'youtube.com' not in content.lower():
+            return False, "Cookie file does not contain YouTube cookies", health
 
-            if len(content.strip()) < 50:
-                return False, "Cookie file appears to be empty or invalid"
+        if len(content.strip()) < 50:
+            return False, "Cookie file appears to be empty or invalid", health
 
-            lines = content.strip().split('\n')
-            has_youtube_cookies = False
-            cookie_count = 0
-            found_session_cookies = []
+        lines = content.strip().split('\n')
+        has_youtube_cookies = False
+        current_time = int(time.time())
 
-            for line in lines:
-                if line.startswith('#') or not line.strip():
+        for line_num, line in enumerate(lines, 1):
+            # Skip comments and empty lines
+            if line.startswith('#') or not line.strip():
+                continue
+
+            # Parse Netscape cookie format: domain, flag, path, secure, expiration, name, value
+            parts = line.split('\t')
+            if len(parts) < 7:
+                health['malformed_lines'] += 1
+                logger.debug(f"Malformed cookie line {line_num}: expected 7 fields, got {len(parts)}")
+                continue
+
+            try:
+                domain = parts[0].strip()
+                cookie_name = parts[5].strip()
+                expiry_str = parts[4].strip()
+
+                if 'youtube.com' not in domain.lower():
                     continue
 
-                parts = line.split('\t')
-                if len(parts) >= 7:
-                    domain = parts[0]
-                    cookie_name = parts[5]
+                has_youtube_cookies = True
+                health['cookie_count'] += 1
 
-                    if 'youtube.com' in domain.lower():
-                        has_youtube_cookies = True
-                        cookie_count += 1
+                # Check for session/auth cookies
+                if any(key in cookie_name for key in ['PSID', 'LOGIN', 'SAPISID', 'SSID', 'HSID', 'SID', 'APISID']):
+                    health['session_cookies'].append(cookie_name)
+
+                # Check cookie expiry
+                try:
+                    expiry_time = int(expiry_str)
+                    
+                    # Check if expired
+                    if expiry_time < current_time:
+                        health['expired_count'] += 1
+                        logger.debug(f"Cookie {cookie_name} is expired (expired {(current_time - expiry_time) // 86400} days ago)")
+                    else:
+                        # Track earliest expiry
+                        if health['earliest_expiry'] is None or expiry_time < health['earliest_expiry']:
+                            health['earliest_expiry'] = expiry_time
                         
-                        # Check for any session/auth related cookies (more flexible)
-                        if any(key in cookie_name for key in ['PSID', 'LOGIN', 'SAPISID', 'SSID', 'HSID', 'SID', 'APISID']):
-                            found_session_cookies.append(cookie_name)
+                        # Check if expiring within 7 days
+                        days_until_expiry = (expiry_time - current_time) // 86400
+                        if days_until_expiry < 7:
+                            health['expiring_soon'] = True
+                            logger.info(f"Cookie {cookie_name} expires in {days_until_expiry} days")
+                
+                except (ValueError, OverflowError):
+                    # Session cookie (no expiry) or invalid expiry time
+                    logger.debug(f"Cookie {cookie_name} has invalid or no expiry time: {expiry_str}")
+                    pass
 
-            if has_youtube_cookies and cookie_count >= 3:
-                if len(found_session_cookies) > 0:
-                    return True, f"✓ Valid YouTube cookies found ({cookie_count} total, {len(found_session_cookies)} session cookies)"
-                else:
-                    # Accept even without explicit session cookies if we have enough cookies
-                    return True, f"✓ YouTube cookies accepted ({cookie_count} cookies found)"
-            elif has_youtube_cookies:
-                return False, f"YouTube cookies found but only {cookie_count} cookie(s). Export cookies from youtube.com while logged in."
-            else:
-                return False, "No YouTube cookies detected in file. Make sure to export from youtube.com"
+            except Exception as e:
+                health['malformed_lines'] += 1
+                logger.debug(f"Error parsing cookie line {line_num}: {str(e)[:100]}")
+                continue
+
+        # Build detailed validation message
+        if not has_youtube_cookies:
+            return False, "No YouTube cookies detected in file. Make sure to export from youtube.com", health
+
+        if health['cookie_count'] < 3:
+            return False, f"Only {health['cookie_count']} YouTube cookie(s) found. Export cookies from youtube.com while logged in (need at least 3).", health
+
+        # Build success message with warnings
+        messages = [f"✓ {health['cookie_count']} YouTube cookies found"]
+        
+        if len(health['session_cookies']) > 0:
+            messages.append(f"{len(health['session_cookies'])} session cookies")
+        
+        warnings = []
+        if health['expired_count'] > 0:
+            warnings.append(f"⚠ {health['expired_count']} expired cookies")
+        
+        if health['expiring_soon'] and health['earliest_expiry']:
+            days_left = (health['earliest_expiry'] - current_time) // 86400
+            warnings.append(f"⚠ Some cookies expire in {days_left} days")
+        
+        if health['malformed_lines'] > 0:
+            warnings.append(f"{health['malformed_lines']} malformed lines skipped")
+
+        full_message = " | ".join(messages)
+        if warnings:
+            full_message += " | " + " | ".join(warnings)
+
+        return True, full_message, health
 
     except Exception as e:
-        return False, f"Error reading cookies: {str(e)}"
+        logger.error(f"Cookie validation error: {str(e)[:200]}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()[:500]}")
+        return False, f"Error reading cookies: {str(e)[:100]}", health
 
 def download_subtitles(url, file_id, max_retries=3):
     """
@@ -550,8 +665,9 @@ def download_subtitles(url, file_id, max_retries=3):
             }
 
             # Add cookies if available for better subtitle access
-            if has_cookies():
-                ydl_opts['cookiefile'] = COOKIES_FILE
+            cookiefile = get_valid_cookiefile()
+            if cookiefile:
+                ydl_opts['cookiefile'] = cookiefile
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
@@ -1203,9 +1319,13 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             }
         ]
 
-        # Add cookies if available
-        if has_cookies():
-            base_opts['cookiefile'] = COOKIES_FILE
+        # Add cookies if available (with health validation)
+        cookiefile = get_valid_cookiefile()
+        if cookiefile:
+            base_opts['cookiefile'] = cookiefile
+            logger.info(f"Using validated cookies for download: {file_id}")
+        else:
+            logger.info(f"No valid cookies available - proceeding without cookies: {file_id}")
 
         last_error = None
         download_success = False
@@ -2436,8 +2556,9 @@ def search():
         }
 
         # Add cookies if available (helps with rate limiting and bot detection)
-        if has_cookies():
-            ydl_opts['cookiefile'] = COOKIES_FILE
+        cookiefile = get_valid_cookiefile()
+        if cookiefile:
+            ydl_opts['cookiefile'] = cookiefile
 
         results = []
         search_results = None
@@ -2537,6 +2658,11 @@ def search():
 
 @app.route('/cookies', methods=['GET', 'POST'])
 def cookies_page():
+    """
+    Enhanced cookie upload route with file size limits, atomic writes, and detailed validation.
+    """
+    MAX_COOKIE_FILE_SIZE = 2 * 1024 * 1024  # 2MB limit
+    
     if request.method == 'POST':
         if 'cookies_file' in request.files:
             file = request.files['cookies_file']
@@ -2546,25 +2672,82 @@ def cookies_page():
 
             if file and file.filename and file.filename.endswith('.txt'):
                 try:
-                    content = file.read().decode('utf-8')
+                    # Read file content with size limit
+                    content_bytes = file.read(MAX_COOKIE_FILE_SIZE + 1)
+                    
+                    # Check file size
+                    if len(content_bytes) > MAX_COOKIE_FILE_SIZE:
+                        flash(f'Cookie file too large. Maximum size is 2MB.')
+                        return redirect(url_for('cookies_page'))
+                    
+                    if len(content_bytes) == 0:
+                        flash('Cookie file is empty')
+                        return redirect(url_for('cookies_page'))
 
+                    # Try to decode with UTF-8, fallback to Latin-1
+                    try:
+                        content = content_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        logger.info("Cookie file not UTF-8, trying Latin-1 encoding")
+                        try:
+                            content = content_bytes.decode('latin-1')
+                        except UnicodeDecodeError:
+                            flash('Cookie file has invalid encoding. Please export as UTF-8 text.')
+                            return redirect(url_for('cookies_page'))
+
+                    # Quick validation before writing
                     if 'youtube.com' not in content.lower():
                         flash('Invalid cookie file: must contain YouTube cookies')
                         return redirect(url_for('cookies_page'))
 
-                    with open(COOKIES_FILE, 'w') as f:
-                        f.write(content)
+                    # Atomic write using temp file
+                    temp_cookie_file = COOKIES_FILE + '.tmp'
+                    try:
+                        # Write to temporary file first
+                        with open(temp_cookie_file, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                        
+                        # Atomically move temp file to final location
+                        os.replace(temp_cookie_file, COOKIES_FILE)
+                        
+                        logger.info(f"Cookie file uploaded successfully ({len(content_bytes)} bytes)")
+                    
+                    except Exception as write_error:
+                        # Clean up temp file if it exists
+                        if os.path.exists(temp_cookie_file):
+                            try:
+                                os.remove(temp_cookie_file)
+                            except:
+                                pass
+                        raise write_error
 
-                    is_valid, validation_msg = validate_cookies()
+                    # Validate uploaded cookies
+                    is_valid, validation_msg, health = validate_cookies()
+                    
                     if not is_valid:
-                        os.remove(COOKIES_FILE)
+                        # Remove invalid cookie file
+                        try:
+                            os.remove(COOKIES_FILE)
+                        except:
+                            pass
                         flash(f'Cookie validation failed: {validation_msg}')
                         return redirect(url_for('cookies_page'))
 
-                    flash('Cookies uploaded and validated successfully!')
+                    # Success with detailed health info
+                    success_msg = 'Cookies uploaded successfully! ' + validation_msg
+                    flash(success_msg)
+                    
+                    # Log cookie health for debugging
+                    logger.info(f"Cookie upload success: {health.get('cookie_count', 0)} cookies, "
+                              f"{len(health.get('session_cookies', []))} session cookies, "
+                              f"{health.get('expired_count', 0)} expired, "
+                              f"{health.get('malformed_lines', 0)} malformed lines")
+                    
                     return redirect(url_for('cookies_page'))
+                    
                 except Exception as e:
-                    flash(f'Error uploading cookies: {str(e)}')
+                    logger.error(f"Cookie upload error: {str(e)[:200]}")
+                    flash(f'Error uploading cookies: {str(e)[:150]}')
                     return redirect(url_for('cookies_page'))
             else:
                 flash('Please upload a .txt file')
@@ -2574,13 +2757,22 @@ def cookies_page():
             try:
                 if os.path.exists(COOKIES_FILE):
                     os.remove(COOKIES_FILE)
-                flash('Cookies deleted successfully')
+                    logger.info("Cookie file deleted by user")
+                    flash('Cookies deleted successfully')
+                else:
+                    flash('No cookies to delete')
             except Exception as e:
+                logger.error(f"Cookie deletion error: {str(e)}")
                 flash(f'Error deleting cookies: {str(e)}')
             return redirect(url_for('cookies_page'))
 
+    # GET request - show cookie status
     cookies_exist = has_cookies()
-    is_valid, message = validate_cookies() if cookies_exist else (False, "No cookies uploaded")
+    
+    if cookies_exist:
+        is_valid, message, health = validate_cookies()
+    else:
+        is_valid, message, health = False, "No cookies uploaded", {}
 
     return render_template('cookies.html', 
                          cookies_exist=cookies_exist, 
