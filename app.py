@@ -924,33 +924,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return False
 
 
-def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, quality_preset):
+def convert_srt_to_dual_line_ass(subtitle_path, file_id):
     """
-    Burn subtitles into 3GP video using FFmpeg with ASS format.
-    Creates dual-line subtitles: line 1 at bottom, line 2 at top.
-    Uses EXACT same encoding parameters as original conversion to ensure identical display.
-
+    Convert SRT subtitle file to dual-line ASS format for burning into video.
+    Creates two subtitle lines: one at bottom and one at top.
+    
     Args:
-        video_path: Path to input 3GP video file
         subtitle_path: Path to SRT subtitle file
-        output_path: Path for output video with burned subtitles
-        file_id: Unique file identifier for status updates
-        quality_preset: The same quality preset used in original conversion
-
+        file_id: Unique file identifier
+    
     Returns:
-        True if successful, False otherwise
+        Path to ASS file if successful, None otherwise
     """
     try:
-        update_status(file_id, {
-            'status': 'burning_subtitles',
-            'progress': 'Burning subtitles into 3GP... This may take a few minutes.'
-        })
-
-        logger.info(f"Starting FFmpeg subtitle burning for {file_id}")
-
-        # Create ASS file with dual-line support (line 1 at bottom, line 2 at top)
         ass_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_subs.ass')
-
+        
         # Read SRT file
         with open(subtitle_path, 'r', encoding='utf-8') as f:
             srt_content = f.read()
@@ -1005,7 +993,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ass_end = srt_to_ass_time(end_time)
 
             # Get subtitle text and preserve line breaks
-            subtitle_text = '\n'.join(lines[2:])  # Keep \n to preserve line breaks
+            subtitle_text = '\n'.join(lines[2:])
             subtitle_lines = subtitle_text.split('\n')
 
             # Line 1 (bottom) - always use first line or full text
@@ -1023,6 +1011,71 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f.write('\n'.join(ass_events))
 
         logger.info(f"✓ Created ASS subtitle file: {ass_path}")
+        return ass_path
+
+    except Exception as e:
+        logger.error(f"Failed to convert SRT to ASS: {str(e)[:200]}")
+        return None
+
+
+def burn_subtitles_ffmpeg_3gp(video_path, subtitle_path, output_path, file_id, quality_preset, url):
+    """
+    Burn subtitles into 3GP video using FFmpeg with ASS format.
+    Includes robust retry logic for both SRT→ASS conversion and FFmpeg encoding.
+    
+    Retry Strategy:
+    1. SRT→ASS conversion: Try conversion → Retry conversion → Re-download subs & convert
+    2. FFmpeg burning: Try with full compression → Retry with simpler settings (same quality)
+
+    Args:
+        video_path: Path to input 3GP video file
+        subtitle_path: Path to SRT subtitle file
+        output_path: Path for output video with burned subtitles
+        file_id: Unique file identifier for status updates
+        quality_preset: The same quality preset used in original conversion
+        url: YouTube URL for re-downloading subtitles if needed
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        update_status(file_id, {
+            'status': 'burning_subtitles',
+            'progress': 'Burning subtitles into 3GP... This may take a few minutes.'
+        })
+
+        logger.info(f"Starting FFmpeg subtitle burning for {file_id}")
+
+        # SRT→ASS conversion with retry logic
+        ass_path = None
+        
+        # Try 1: Initial conversion
+        logger.info(f"Converting SRT to ASS (attempt 1/3)...")
+        ass_path = convert_srt_to_dual_line_ass(subtitle_path, file_id)
+        
+        # Try 2: Retry conversion if failed
+        if not ass_path:
+            logger.warning(f"SRT→ASS conversion failed, retrying (attempt 2/3)...")
+            ass_path = convert_srt_to_dual_line_ass(subtitle_path, file_id)
+        
+        # Try 3: Re-download subtitles and convert if still failed
+        if not ass_path:
+            logger.warning(f"SRT→ASS conversion failed again, re-downloading subtitles (attempt 3/3)...")
+            update_status(file_id, {
+                'progress': 'Subtitle conversion issue, re-downloading subtitles...'
+            })
+            
+            # Re-download subtitles
+            new_subtitle_path = download_subtitles(url, file_id)
+            if new_subtitle_path:
+                ass_path = convert_srt_to_dual_line_ass(new_subtitle_path, file_id)
+                # Update subtitle_path to new one for cleanup
+                subtitle_path = new_subtitle_path
+        
+        # Final check: If conversion still failed after all attempts, give up
+        if not ass_path:
+            logger.error(f"Failed to convert SRT to ASS after 3 attempts")
+            return False
 
         # Calculate derived parameters (same as original conversion)
         video_bitrate_num = int(quality_preset['video_bitrate'].replace('k', ''))
@@ -1031,13 +1084,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         fps_num = int(quality_preset['fps'])
         gop_size = fps_num * 10
 
-        # Create small black bar at bottom for subtitles (video fills 240x312, leaving 8px for subs)
-        # Scale up and crop to fill 240x312 completely (no side black bars), then add 8px black bar at bottom
-        # FFmpeg accepts forward slashes on all platforms (Windows/Linux), so normalize path
-        # Then escape colons for FFmpeg filter syntax
+        # FFmpeg path escaping for filter syntax
         escaped_ass_path = ass_path.replace('\\', '/').replace(':', '\\:')
         video_filter = f"scale=320:236:force_original_aspect_ratio=increase,crop=320:232,pad=320:240:0:0,setsar=1,subtitles={escaped_ass_path}"
 
+        # Attempt 1: Full compression + user's selected quality
+        logger.info(f"Burning subtitles with full compression ({quality_preset['name']})...")
         ffmpeg_cmd = [
             FFMPEG_PATH,
             '-i', video_path,
@@ -1065,16 +1117,47 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             output_path
         ]
 
-        logger.info(f"Running FFmpeg subtitle burn: {' '.join(ffmpeg_cmd[:10])}...")
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=600)
 
         if result.returncode != 0:
-            error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
-            logger.error(f"FFmpeg subtitle burning failed: {error_msg}")
-            logger.error(f"Full FFmpeg command: {' '.join(ffmpeg_cmd)}")
-            return False
+            # Attempt 2: Simpler encoding (same quality, no advanced compression)
+            logger.warning(f"Subtitle burning failed with full compression, retrying with simpler settings ({quality_preset['name']})...")
+            update_status(file_id, {
+                'progress': f'Retrying subtitle burning with simpler settings ({quality_preset["name"]})...'
+            })
+            
+            # Simpler FFmpeg command - removes advanced compression but keeps user's quality
+            simple_ffmpeg_cmd = [
+                FFMPEG_PATH,
+                '-i', video_path,
+                '-vf', video_filter,
+                '-vcodec', 'mpeg4',
+                '-r', quality_preset['fps'],
+                '-b:v', quality_preset['video_bitrate'],
+                '-acodec', 'aac',
+                '-ar', quality_preset['audio_sample_rate'],
+                '-b:a', quality_preset['audio_bitrate'],
+                '-ac', '1',
+                '-y',
+                output_path
+            ]
+            
+            result = subprocess.run(simple_ffmpeg_cmd, capture_output=True, text=True, timeout=600)
+            
+            if result.returncode != 0:
+                error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
+                logger.error(f"FFmpeg subtitle burning failed after retry: {error_msg[:300]}")
+                logger.error(f"Full FFmpeg command: {' '.join(simple_ffmpeg_cmd)}")
+                
+                # Clean up ASS file
+                try:
+                    os.remove(ass_path)
+                except:
+                    pass
+                
+                return False
 
-        # Clean up ASS file
+        # Clean up ASS file after successful burning
         try:
             os.remove(ass_path)
         except:
@@ -1674,7 +1757,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
             output_with_subs = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_with_subs.3gp')
 
             # Use FFmpeg for 3GP subtitle burning (keeps exact same format/display size)
-            if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id, quality_preset):
+            if burn_subtitles_ffmpeg_3gp(output_path, subtitle_file, output_with_subs, file_id, quality_preset, url):
                 # Replace output_path with subtitle-burned version
                 try:
                     os.remove(output_path)
