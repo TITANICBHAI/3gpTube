@@ -52,10 +52,10 @@ def parse_filesize(size_str):
 
 # Resource limits optimized for Render free tier (0.1 CPU, 512MB RAM, 15-min request timeout)
 # Can be overridden via environment variables for local development or paid tiers
-MAX_VIDEO_DURATION = int(os.environ.get('MAX_VIDEO_DURATION', 1800))  # 30 minutes default (fits in 15-min Render timeout)
+MAX_VIDEO_DURATION = int(os.environ.get('MAX_VIDEO_DURATION', 18000))  # 30 minutes default (fits in 15-min Render timeout)
 DOWNLOAD_TIMEOUT = None  # Unlimited download timeout (network timeouts handled by yt-dlp)
 FILE_RETENTION_HOURS = int(os.environ.get('FILE_RETENTION_HOURS', 6))
-MAX_FILESIZE = parse_filesize(os.environ.get('MAX_FILESIZE', '500M'))  # 500MB for Render free tier (512MB RAM limit)
+MAX_FILESIZE = parse_filesize(os.environ.get('MAX_FILESIZE', '1000M'))  # 500MB for Render free tier (512MB RAM limit)
 
 # Playlist storage
 PLAYLIST_STATUS_FILE = '/tmp/playlist_status.json'
@@ -70,12 +70,12 @@ USE_OAUTH = os.environ.get('USE_OAUTH', 'false').lower() == 'true'
 RATE_LIMIT_BYTES = int(os.environ.get('RATE_LIMIT_BYTES', 0))  # 0 = unlimited, set to 500000 for 500KB/s
 MAX_CONCURRENT_DOWNLOADS = int(os.environ.get('MAX_CONCURRENT_DOWNLOADS', 1))
 ENABLE_DISK_SPACE_MONITORING = os.environ.get('ENABLE_DISK_SPACE_MONITORING', 'true').lower() == 'true'
-DISK_SPACE_THRESHOLD_MB = int(os.environ.get('DISK_SPACE_THRESHOLD_MB', 1500))  # Alert when < 1.5GB free
+DISK_SPACE_THRESHOLD_MB = int(os.environ.get('DISK_SPACE_THRESHOLD_MB', 150))  # Alert when < 1.5GB free
 
 # Subtitle burning settings - optimized for Render free tier CPU constraints
 # Unlimited for local/powerful servers, but limited by MAX_VIDEO_DURATION on Render
-SUBTITLE_MAX_DURATION_MINS = int(os.environ.get('SUBTITLE_MAX_DURATION_MINS', 45)) if os.environ.get('SUBTITLE_MAX_DURATION_MINS') else None
-SUBTITLE_MAX_FILESIZE_MB = int(os.environ.get('SUBTITLE_MAX_FILESIZE_MB', 300)) if os.environ.get('SUBTITLE_MAX_FILESIZE_MB') else None
+SUBTITLE_MAX_DURATION_MINS = int(os.environ.get('SUBTITLE_MAX_DURATION_MINS', 450)) if os.environ.get('SUBTITLE_MAX_DURATION_MINS') else None
+SUBTITLE_MAX_FILESIZE_MB = int(os.environ.get('SUBTITLE_MAX_FILESIZE_MB', 1000)) if os.environ.get('SUBTITLE_MAX_FILESIZE_MB') else None
 ENABLE_SUBTITLE_BURNING = os.environ.get('ENABLE_SUBTITLE_BURNING', 'true').lower() == 'true'
 
 # FFmpeg performance settings for CPU-constrained environments
@@ -128,7 +128,7 @@ VIDEO_QUALITY_PRESETS = {
     'low': {
         'name': 'Low (Recommended for Feature Phones)',
         'video_bitrate': '200k',
-        'audio_bitrate': '128k',
+        'audio_bitrate': '96k',
         'audio_sample_rate': '44100',
         'fps': '12',
         'description': '~3 MB per 5 min'
@@ -146,7 +146,7 @@ VIDEO_QUALITY_PRESETS = {
         'video_bitrate': '400k',
         'audio_bitrate': '320k',
         'audio_sample_rate': '48000',
-        'fps': '20',
+        'fps': '18',
         'description': '~5 MB per 5 min'
     }
 }
