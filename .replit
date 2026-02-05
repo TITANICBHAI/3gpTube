@@ -1,0 +1,53 @@
+modules = ["python-3.12", "web", "bash"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["dejavu_fonts", "ffmpeg", "ffmpeg-full", "imagemagick", "imagemagickBig", "liberation_ttf"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "flask-app"
+
+[[workflows.workflow]]
+name = "flask-app"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python app.py"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "vm"
+run = ["gunicorn", "--bind=0.0.0.0:5000", "--workers=1", "--threads=4", "--timeout=120", "app:app"]
+
+[userenv]
+
+[userenv.shared]
+USE_IPV6 = "true"
+PLAYLIST_MAX_VIDEOS = "20"
+MAX_CONCURRENT_DOWNLOADS = "1"
+KEEP_ALIVE_ENABLED = "true"
+MAX_VIDEO_DURATION = "7200"
+DISK_SPACE_THRESHOLD_MB = "100"
+ENABLE_DISK_SPACE_MONITORING = "true"
+MAX_FILESIZE = "1G"
+FFMPEG_DEFAULT_TIMEOUT = "0"
+DOWNLOAD_TIMEOUT = "3600"
