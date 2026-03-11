@@ -1,0 +1,2 @@
+Can u add a page where I can upload my mp4 to convert into 3gp and this cmd for conversion ffmpeg -y -i input.mp4 -vf scale= 320:240 -r 20 -vcodec mpeg4 -b:v 500k -acodec aac -b:a 256k -ac 1 output.3gp
+Replace input and output accordingly

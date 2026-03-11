@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Upload to 3GP{% endblock %}
+{% block content %}
+<h1>Upload and Convert to 3GP</h1>
+<div class="info">
+    Upload an MP4 file or paste a direct download link to convert to 3GP format (320x240, 20fps).
+</div>
+
+<h2>Method 1: Upload File</h2>
+<form action="/upload_3gp" method="post" enctype="multipart/form-data" id="file-form">
+    <div style="margin-bottom: 15px;">
+        <label for="file">Select MP4 File:</label>
+        <input type="file" name="file" id="file" accept=".mp4" style="width: 100%; margin-top: 5px;">
+    </div>
+    <button type="submit">Upload and Convert</button>
+</form>
+
+<hr>
+
+<h2>Method 2: Download from URL</h2>
+<form action="/upload_3gp" method="post" id="url-form">
+    <div style="margin-bottom: 15px;">
+        <label for="url">Download Link:</label>
+        <input type="text" name="url" id="url" placeholder="https://example.com/video.mp4" style="width: 100%; margin-top: 5px;">
+    </div>
+    <button type="submit">Download and Convert</button>
+</form>
+
+<div id="upload-status" style="display: none;" class="status">
+    Processing... Please wait.
+</div>
+
+<script>
+document.getElementById('file-form').addEventListener('submit', function(e) {
+    if (!document.getElementById('file').files.length) {
+        e.preventDefault();
+        alert('Please select a file');
+    } else {
+        document.getElementById('upload-status').style.display = 'block';
+        document.getElementById('file-form').querySelector('button').disabled = true;
+    }
+});
+
+document.getElementById('url-form').addEventListener('submit', function(e) {
+    if (!document.getElementById('url').value.trim()) {
+        e.preventDefault();
+        alert('Please enter a URL');
+    } else {
+        document.getElementById('upload-status').style.display = 'block';
+        document.getElementById('url-form').querySelector('button').disabled = true;
+    }
+});
+</script>
+{% endblock %}
