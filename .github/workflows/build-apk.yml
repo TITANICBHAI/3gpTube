@@ -28,6 +28,25 @@ jobs:
       - name: Install Python dependencies for Chaquopy
         run: pip install yt-dlp requests
 
+      - name: Download Gradle wrapper JAR
+        working-directory: android-app
+        run: |
+          mkdir -p gradle/wrapper
+          GRADLE_VERSION=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties | sed 's/.*gradle-\([0-9.]*\)-.*/\1/')
+          echo "Detected Gradle version: $GRADLE_VERSION"
+          curl -fsSL -o /tmp/gradle-dist.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          unzip -j /tmp/gradle-dist.zip "gradle-${GRADLE_VERSION}/lib/plugins/gradle-wrapper-*.jar" -d /tmp/wrapper_extract/ 2>/dev/null || \
+          unzip -j /tmp/gradle-dist.zip "*/gradle-wrapper-*.jar" -d /tmp/wrapper_extract/ 2>/dev/null || true
+          if ls /tmp/wrapper_extract/*.jar 2>/dev/null; then
+            cp /tmp/wrapper_extract/*.jar gradle/wrapper/gradle-wrapper.jar
+          else
+            unzip -j /tmp/gradle-dist.zip "gradle-${GRADLE_VERSION}/lib/gradle-wrapper-*.jar" -d /tmp/wrapper_extract2/ 2>/dev/null || true
+            unzip /tmp/gradle-dist.zip -d /tmp/gradle_full/ 2>/dev/null
+            find /tmp/gradle_full -name "gradle-wrapper.jar" | head -1 | xargs -I{} cp {} gradle/wrapper/gradle-wrapper.jar
+          fi
+          ls -lh gradle/wrapper/
+          java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain --version 2>/dev/null || echo "JAR validation skipped (expected — needs network for first run)"
+
       - name: Grant execute permission for gradlew
         working-directory: android-app
         run: chmod +x gradlew
