@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.chaquo.python.PyObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,6 +27,12 @@ data class SearchResult(
     val channel: String,
     val thumbnail: String,
 )
+
+fun Map<PyObject, PyObject>.str(key: String): String? =
+    entries.find { it.key.toString() == key }?.value?.toString()
+
+fun Map<PyObject, PyObject>.long(key: String): Long =
+    str(key)?.toLongOrNull() ?: 0L
 
 class ConverterViewModel : ViewModel() {
 
@@ -69,11 +76,11 @@ class ConverterViewModel : ViewModel() {
                     val converter = PythonManager.getConverter()
                     val statusMap = converter.callAttr("get_status", fileId).asMap()
 
-                    val status = statusMap["status"]?.toString() ?: "unknown"
-                    val progress = statusMap["progress"]?.toString() ?: ""
-                    val outputPath = statusMap["output_path"]?.toString()
-                    val videoTitle = statusMap["video_title"]?.toString()
-                    val fileSize = statusMap["file_size"]?.toLong() ?: 0L
+                    val status = statusMap.str("status") ?: "unknown"
+                    val progress = statusMap.str("progress") ?: ""
+                    val outputPath = statusMap.str("output_path")
+                    val videoTitle = statusMap.str("video_title")
+                    val fileSize = statusMap.long("file_size")
 
                     _conversionStatus.postValue(
                         ConversionStatus(fileId, status, progress, outputPath, videoTitle, fileSize)
@@ -103,12 +110,12 @@ class ConverterViewModel : ViewModel() {
                     val m = item.asMap()
                     results.add(
                         SearchResult(
-                            id = m["id"]?.toString() ?: "",
-                            title = m["title"]?.toString() ?: "Unknown",
-                            url = m["url"]?.toString() ?: "",
-                            duration = m["duration"]?.toString() ?: "",
-                            channel = m["channel"]?.toString() ?: "",
-                            thumbnail = m["thumbnail"]?.toString() ?: "",
+                            id = m.str("id") ?: "",
+                            title = m.str("title") ?: "Unknown",
+                            url = m.str("url") ?: "",
+                            duration = m.str("duration") ?: "",
+                            channel = m.str("channel") ?: "",
+                            thumbnail = m.str("thumbnail") ?: "",
                         )
                     )
                 }

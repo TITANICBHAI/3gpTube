@@ -49,14 +49,16 @@ class HistoryFragment : Fragment() {
                 val items = mutableListOf<HistoryItem>()
                 for ((fileId, statusObj) in all) {
                     val status = statusObj.asMap()
-                    if (status["status"]?.toString() != "completed") continue
-                    val path = status["output_path"]?.toString() ?: continue
+                    val statusStr = status.entries.find { it.key.toString() == "status" }?.value?.toString()
+                    if (statusStr != "completed") continue
+                    val path = status.entries.find { it.key.toString() == "output_path" }?.value?.toString() ?: continue
                     val file = File(path)
                     if (!file.exists()) continue
+                    val title = status.entries.find { it.key.toString() == "video_title" }?.value?.toString() ?: "Unknown"
                     items.add(
                         HistoryItem(
                             fileId = fileId.toString(),
-                            title = status["video_title"]?.toString() ?: "Unknown",
+                            title = title,
                             format = if (path.endsWith(".mp3")) "MP3" else "MP4",
                             filePath = path,
                             fileSize = file.length(),
