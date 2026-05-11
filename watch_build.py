@@ -51,7 +51,12 @@ def gh(method, path, data=None, raw=False):
     req  = urllib.request.Request(url, data=body, headers=H, method=method)
     try:
         with urllib.request.urlopen(req) as r:
-            return r.read() if raw else json.loads(r.read())
+            content = r.read()
+            if raw:
+                return content
+            if not content.strip():
+                return {}          # 204 No Content or empty body
+            return json.loads(content)
     except urllib.error.HTTPError as e:
         body = e.read().decode()[:400]
         print(f"  HTTP {e.code} on {method} {path}: {body}")
