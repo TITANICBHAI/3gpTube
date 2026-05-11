@@ -6,25 +6,19 @@ echo "   YouTube Converter — Build Android APK"
 echo "================================================"
 echo ""
 
-# ── Check required env vars ──────────────────────────
+# ── Resolve token (support both secret names) ────────
+GITHUB_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN:-$GITHUB_TOKEN}"
+
 if [ -z "$GITHUB_TOKEN" ]; then
-    echo "ERROR: GITHUB_TOKEN is not set."
+    echo "ERROR: GITHUB_PERSONAL_ACCESS_TOKEN is not set."
     echo ""
-    echo "  1. Go to https://github.com/settings/tokens"
-    echo "  2. Generate a token with 'repo' scope"
-    echo "  3. Add it to Replit Secrets as GITHUB_TOKEN"
+    echo "  Add it to Replit Secrets as GITHUB_PERSONAL_ACCESS_TOKEN"
+    echo "  (needs 'repo' scope from https://github.com/settings/tokens)"
     exit 1
 fi
 
-if [ -z "$GITHUB_REPO" ]; then
-    echo "ERROR: GITHUB_REPO is not set."
-    echo ""
-    echo "  Set it to your GitHub repo (user/repo format):"
-    echo "  export GITHUB_REPO=youruser/youtube-converter-android"
-    echo "  Or add it to Replit Secrets."
-    exit 1
-fi
-
+# ── Hardcoded repo ───────────────────────────────────
+GITHUB_REPO="${GITHUB_REPO:-TITANICBHAI/3gpTube}"
 BRANCH="${GITHUB_BRANCH:-main}"
 COMMIT_MSG="${1:-"build: update Android app $(date '+%Y-%m-%d %H:%M:%S')"}"
 API="https://api.github.com/repos/$GITHUB_REPO"
@@ -32,6 +26,10 @@ AUTH_HEADER="Authorization: token $GITHUB_TOKEN"
 ACCEPT_HEADER="Accept: application/vnd.github.v3+json"
 
 _api() { curl -s -H "$AUTH_HEADER" -H "$ACCEPT_HEADER" "$@"; }
+
+echo "  Repo  : $GITHUB_REPO"
+echo "  Branch: $BRANCH"
+echo ""
 
 # ── Step 1: Push to GitHub ───────────────────────────
 echo "[1/3] Pushing code to GitHub ($GITHUB_REPO)..."
@@ -44,6 +42,9 @@ else
     git remote set-url origin "$REMOTE_URL"
 fi
 
+git config user.email "build-bot@replit.com" 2>/dev/null || true
+git config user.name  "Replit Build Bot"     2>/dev/null || true
+
 git add -A
 
 if git diff --cached --quiet; then
@@ -53,12 +54,11 @@ else
     git commit -m "$COMMIT_MSG"
 fi
 
-git push -u origin "$BRANCH" --force-with-lease 2>/dev/null || git push -u origin "$BRANCH" --force
-
+git push -u origin "$BRANCH" --force 2>&1
 PUSH_TIME=$(date +%s)
 echo ""
 echo "  Pushed at $(date '+%H:%M:%S')"
-echo "  https://github.com/$GITHUB_REPO/actions"
+echo "  Actions: https://github.com/$GITHUB_REPO/actions"
 echo ""
 
 # ── Step 2: Wait for workflow run to appear ──────────
@@ -98,7 +98,6 @@ for r in data.get('workflow_runs', []):
 done
 
 if [ -z "$RUN_ID" ]; then
-    # Fallback: grab the most recent run at all
     RUN_ID=$(_api "$API/actions/runs?per_page=1" | python3 -c "
 import sys, json
 runs = json.load(sys.stdin).get('workflow_runs', [])
@@ -155,7 +154,7 @@ print(done[-1] if done else 'Starting...')
         echo ""
         if [ "$CONCLUSION" = "success" ]; then
             echo "================================================"
-            echo "  ✓  BUILD SUCCEEDED!"
+            echo "  BUILD SUCCEEDED!"
             echo "================================================"
             echo ""
             echo "  Downloading APK..."
@@ -186,22 +185,38 @@ print(arts[0]['archive_download_url'] if arts else '')
                 echo "    A) USB (adb):"
                 echo "       adb install apk_output/YouTubeConverter-debug.apk"
                 echo ""
-                echo "    B) Manual (no PC needed):"
-                echo "       Transfer the .apk file to your Android phone"
-                echo "       Go to Settings > Install unknown apps"
-                echo "       Tap the APK file to install"
+                echo "    B) Manual:"
+                echo "       Transfer the .apk to your Android phone"
+                echo "       Settings > Install unknown apps > tap the APK"
                 echo "================================================"
             else
-                echo "  Auto-download failed. Get the APK manually:"
+                echo "  Get APK manually from:"
                 echo "  https://github.com/$GITHUB_REPO/actions/runs/$RUN_ID"
             fi
         else
             echo "================================================"
-            echo "  ✗  BUILD FAILED (result: $CONCLUSION)"
+            echo "  BUILD FAILED (result: $CONCLUSION)"
             echo "================================================"
             echo ""
-            echo "  View full logs:"
-            echo "  https://github.com/$GITHUB_REPO/actions/runs/$RUN_ID"
+
+            # Print last 50 lines of logs for the failed job
+            echo "  Fetching failure logs..."
+            JOB_ID=$(_api "$API/actions/runs/$RUN_ID/jobs" | python3 -c "
+import sys, json
+jobs = json.load(sys.stdin).get('jobs', [])
+failed = [j for j in jobs if j.get('conclusion') == 'failure']
+print(failed[0]['id'] if failed else (jobs[0]['id'] if jobs else ''))
+" 2>/dev/null)
+
+            if [ -n "$JOB_ID" ]; then
+                echo ""
+                echo "  --- Last 60 lines of build log ---"
+                _api "$API/actions/jobs/$JOB_ID/logs" | tail -60
+                echo "  --- End of log ---"
+            fi
+
+            echo ""
+            echo "  Full logs: https://github.com/$GITHUB_REPO/actions/runs/$RUN_ID"
         fi
         exit 0
     fi
