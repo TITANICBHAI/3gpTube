@@ -231,16 +231,39 @@ def handle_success(run_id):
     for a in arts:
         kb = a["size_in_bytes"] // 1024
         print(f"  Artifact : {a['name']}  ({kb} KB)")
-        # Download
+        # Download — follow redirect without auth (Azure Blob rejects Bearer)
         try:
             dl_url = a["archive_download_url"]
             out_dir = "apk_output"
             os.makedirs(out_dir, exist_ok=True)
             zip_path = f"{out_dir}/{a['name']}.zip"
-            req = urllib.request.Request(dl_url, headers=H)
-            with urllib.request.urlopen(req) as r:
+
+            # Step 1: get redirect URL from GitHub (with auth)
+            req1 = urllib.request.Request(dl_url, headers=H, method="GET")
+            opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
+            # Don't follow automatically — we need to strip auth on redirect
+            no_redirect = urllib.request.build_opener()
+            no_redirect.handlers = [h for h in no_redirect.handlers
+                                     if not isinstance(h, urllib.request.HTTPRedirectHandler)]
+            class NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    return None
+            nr_opener = urllib.request.build_opener(NoRedirect())
+            try:
+                nr_opener.open(req1)
+                redirect_url = None
+            except urllib.error.HTTPError as e:
+                redirect_url = e.headers.get("Location")
+
+            if not redirect_url:
+                raise Exception("no redirect URL from GitHub")
+
+            # Step 2: download from Azure without auth header
+            req2 = urllib.request.Request(redirect_url, headers={"User-Agent": "replit-watch-build"})
+            with urllib.request.urlopen(req2) as r:
                 with open(zip_path, "wb") as f:
                     f.write(r.read())
+
             import zipfile
             with zipfile.ZipFile(zip_path, "r") as z:
                 z.extractall(out_dir)
