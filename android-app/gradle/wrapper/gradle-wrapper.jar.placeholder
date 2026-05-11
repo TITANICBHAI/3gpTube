@@ -1,0 +1,6 @@
+This is a placeholder. The actual gradle-wrapper.jar will be generated when you open this project in Android Studio or run ./gradlew for the first time. Android Studio handles this automatically.
+
+To get the gradle wrapper jar, run inside the android-app folder:
+  gradle wrapper --gradle-version 8.4
+
+Or just open the folder in Android Studio — it will set everything up.
