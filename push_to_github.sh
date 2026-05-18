@@ -28,19 +28,19 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: auto-update yt-dlp, MP4 quality, formats page, YouTube cookie login
+  git -C /home/runner/workspace commit -m "feat: download queue manager with live progress list
 
-- Settings page with yt-dlp version display and manual update button
-- Auto-update yt-dlp on startup (once per day, background thread)
-- MP4 format with 360p/480p/720p/1080p quality presets via FFmpeg
-- Formats page: shows all native YouTube formats (direct/video-only/audio-only)
-  and allows direct download or re-encode via FFmpeg
-- Built-in YouTube login browser in MainActivity (WebView overlay)
-  - Android CookieManager extracts cookies after login
-  - POSTs cookies to /save-cookies as Netscape format
-- Manual cookie upload (file or paste) still supported
-- Updated nav: Home/Search/Formats/History/Cookies/Settings
-- Updated activity_main.xml with root FrameLayout for cookie login overlay"
+- DownloadQueue class: sequential processing (one at a time), JSON-backed
+- _queue_worker background thread picks pending items automatically
+- /convert now adds to queue instead of spawning ad-hoc threads
+- /queue page: live list of pending/active/completed/failed items
+  - Auto-refreshes every 4 seconds
+  - Active item shows animated progress bar
+  - Per-item Download, Retry, Remove buttons
+  - Clear completed & failed in one tap
+- /queue/status JSON API for programmatic polling
+- /queue/retry/<id> re-queues a failed item with new file_id
+- Updated nav: added [Queue] between [Formats] and [History]"
 fi
 
 echo "[3] Pushing to GitHub..."

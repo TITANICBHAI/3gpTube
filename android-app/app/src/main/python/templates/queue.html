@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Download Queue — 3gpTube{% endblock %}
+{% block meta %}<meta http-equiv="refresh" content="4">{% endblock %}
+{% block content %}
+<h1>Download Queue</h1>
+
+<!-- summary strip -->
+<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+  {% if active_count %}
+  <span class="badge badge-yellow" style="font-size:13px;padding:4px 10px">{{ active_count }} active</span>
+  {% endif %}
+  {% if done_count %}
+  <span class="badge badge-green" style="font-size:13px;padding:4px 10px">{{ done_count }} done</span>
+  {% endif %}
+  {% if failed_count %}
+  <span class="badge" style="font-size:13px;padding:4px 10px;background:#f8e8e8;color:#a44a4a;border:1px solid #a44a4a">{{ failed_count }} failed</span>
+  {% endif %}
+  {% if not queue_items %}
+  <span class="badge badge-blue" style="font-size:13px;padding:4px 10px">Queue empty</span>
+  {% endif %}
+</div>
+
+{% if queue_items %}
+<div style="margin-bottom:10px">
+  {% for item in queue_items %}
+  <div style="border:2px solid {% if item.queue_status == 'processing' %}#d4a017{% elif item.queue_status == 'completed' %}#4a904a{% elif item.queue_status == 'failed' %}#a44a4a{% else %}#888{% endif %};padding:10px;margin-bottom:8px;background:{% if item.queue_status == 'processing' %}#fff9e6{% elif item.queue_status == 'completed' %}#f0fff0{% elif item.queue_status == 'failed' %}#fff0f0{% else %}#f9f9f9{% endif %}">
+
+    <!-- title & badge -->
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <span class="badge {% if item.queue_status == 'processing' %}badge-yellow{% elif item.queue_status == 'completed' %}badge-green{% elif item.queue_status == 'failed' %}" style="background:#f8e8e8;color:#a44a4a;border:1px solid #a44a4a{% else %}badge-blue{% endif %}">
+        {% if item.queue_status == 'processing' %}Downloading{% elif item.queue_status == 'completed' %}Done{% elif item.queue_status == 'failed' %}Failed{% elif item.queue_status == 'pending' %}#{{ item.position }} Waiting{% else %}{{ item.queue_status }}{% endif %}
+      </span>
+      <span class="badge badge-blue" style="font-size:11px">{{ item.format|upper }}{% if item.quality %} {{ item.quality }}{% endif %}</span>
+      <strong style="font-size:13px;word-break:break-word">{{ item.video_title or item.url }}</strong>
+    </div>
+
+    <!-- progress bar (only while active) -->
+    {% if item.queue_status in ('processing', 'pending') and item.live_progress %}
+    <div style="font-size:12px;color:#666;margin-bottom:6px">{{ item.live_progress }}</div>
+    {% endif %}
+    {% if item.queue_status == 'processing' %}
+    <div style="background:#ddd;height:6px;border-radius:3px;margin-bottom:6px;overflow:hidden">
+      <div style="background:#d4a017;height:100%;width:{% if 'convert' in (item.live_progress or '') %}70{% elif 'download' in (item.live_progress or '') or 'Retry' in (item.live_progress or '') %}35{% elif 'Done' in (item.live_progress or '') %}100{% else %}15{% endif %}%;transition:width 1s"></div>
+    </div>
+    {% endif %}
+
+    {% if item.queue_status == 'failed' and item.error %}
+    <div style="font-size:12px;color:#a44a4a;margin-bottom:6px;word-break:break-word">{{ item.error }}</div>
+    {% endif %}
+
+    <!-- size -->
+    {% if item.file_size and item.file_size > 0 %}
+    <div style="font-size:12px;color:#666;margin-bottom:6px">Size: {{ (item.file_size / 1048576) | round(1) }} MB</div>
+    {% endif %}
+
+    <!-- action buttons -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      {% if item.queue_status == 'completed' and item.file_exists %}
+      <a href="/download/{{ item.file_id }}" class="button btn-green" style="width:auto;padding:5px 12px;font-size:12px;margin:0">Download</a>
+      {% endif %}
+      {% if item.queue_status == 'failed' %}
+      <form method="POST" action="/queue/retry/{{ item.queue_id }}" style="margin:0">
+        <button type="submit" class="btn-yellow" style="padding:5px 12px;font-size:12px;width:auto;margin:0">Retry</button>
+      </form>
+      {% endif %}
+      {% if item.queue_status != 'processing' %}
+      <form method="POST" action="/queue/remove/{{ item.queue_id }}" style="margin:0">
+        <button type="submit" class="btn-red" style="padding:5px 12px;font-size:12px;width:auto;margin:0">Remove</button>
+      </form>
+      {% endif %}
+      <a href="/status_page/{{ item.file_id }}" style="font-size:12px;padding:5px 8px;color:#4a90a4">Details</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if done_count or failed_count %}
+<form method="POST" action="/queue/clear-done">
+  <button type="submit" class="btn-red" style="font-size:13px">Clear Completed &amp; Failed</button>
+</form>
+{% endif %}
+
+{% else %}
+<div class="info">
+  <p class="center">No downloads in queue.</p>
+  <a href="/" class="button btn-blue" style="margin-top:8px">Add a video</a>
+</div>
+{% endif %}
+
+<p style="font-size:11px;color:#999;text-align:center;margin-top:10px">Page refreshes every 4 seconds</p>
+{% endblock %}

@@ -19,6 +19,7 @@ STATUS_FILE = os.path.join(APP_DIR, 'conversion_status.json')
 TEMPLATES_DIR = os.path.join(APP_DIR, 'templates')
 COOKIES_FILE = os.path.join(APP_DIR, 'youtube_cookies.txt')
 SETTINGS_FILE = os.path.join(APP_DIR, 'settings.json')
+QUEUE_FILE = os.path.join(APP_DIR, 'queue.json')
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
@@ -26,6 +27,7 @@ os.makedirs(TEMPLATES_DIR, exist_ok=True)
 
 status_lock = threading.Lock()
 settings_lock = threading.Lock()
+queue_lock = threading.Lock()
 
 # ── settings ──────────────────────────────────────────────────────────────────
 
@@ -156,7 +158,6 @@ def get_valid_cookiefile():
     return COOKIES_FILE if has_cookies() else None
 
 def android_cookies_to_netscape(cookie_dict):
-    """Convert Android CookieManager cookies {domain: 'k=v; k2=v2'} to Netscape format."""
     lines = ['# Netscape HTTP Cookie File', '# Extracted from Android WebView', '']
     now = int(time.time())
     expiry = now + 365 * 86400
@@ -174,6 +175,141 @@ def android_cookies_to_netscape(cookie_dict):
                 if name:
                     lines.append(f"{domain}\t{host_only}\t/\tFALSE\t{expiry}\t{name}\t{value}")
     return '\n'.join(lines) + '\n'
+
+# ── download queue ────────────────────────────────────────────────────────────
+
+class DownloadQueue:
+    def __init__(self):
+        self._lock = queue_lock
+
+    def _read(self):
+        try:
+            with open(QUEUE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {'items': []}
+
+    def _write(self, data):
+        tmp = QUEUE_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, QUEUE_FILE)
+
+    def add(self, url, file_id, fmt, quality, native_fmt_id=None, title=None):
+        with self._lock:
+            data = self._read()
+            position = len([i for i in data['items'] if i['queue_status'] in ('pending', 'processing')]) + 1
+            item = {
+                'queue_id': hashlib.md5(f"{file_id}{time.time()}".encode()).hexdigest()[:8],
+                'file_id': file_id,
+                'url': url,
+                'format': fmt,
+                'quality': quality,
+                'native_fmt_id': native_fmt_id,
+                'title': title or url,
+                'queue_status': 'pending',
+                'position': position,
+                'added_at': time.time(),
+                'started_at': None,
+                'completed_at': None,
+                'error': None,
+            }
+            data['items'].append(item)
+            self._write(data)
+            return item
+
+    def get_all(self):
+        with self._lock:
+            data = self._read()
+            return data.get('items', [])
+
+    def get_next_pending(self):
+        with self._lock:
+            data = self._read()
+            for item in data['items']:
+                if item['queue_status'] == 'pending':
+                    return item
+            return None
+
+    def is_processing(self):
+        with self._lock:
+            data = self._read()
+            return any(i['queue_status'] == 'processing' for i in data['items'])
+
+    def update_item(self, queue_id, updates):
+        with self._lock:
+            data = self._read()
+            for item in data['items']:
+                if item['queue_id'] == queue_id:
+                    item.update(updates)
+                    break
+            self._write(data)
+
+    def remove(self, queue_id):
+        with self._lock:
+            data = self._read()
+            data['items'] = [i for i in data['items'] if i['queue_id'] != queue_id]
+            self._write(data)
+
+    def clear_done(self):
+        with self._lock:
+            data = self._read()
+            data['items'] = [i for i in data['items'] if i['queue_status'] not in ('completed', 'failed')]
+            self._write(data)
+
+    def reorder_positions(self):
+        with self._lock:
+            data = self._read()
+            pos = 1
+            for item in data['items']:
+                if item['queue_status'] in ('pending', 'processing'):
+                    item['position'] = pos
+                    pos += 1
+            self._write(data)
+
+
+_queue = DownloadQueue()
+
+
+def _queue_worker():
+    """Background thread: processes one queue item at a time."""
+    logger.info("Queue worker started")
+    while True:
+        try:
+            if _queue.is_processing():
+                time.sleep(2)
+                continue
+            item = _queue.get_next_pending()
+            if not item:
+                time.sleep(2)
+                continue
+            logger.info(f"Queue: starting {item['queue_id']} — {item['url']}")
+            _queue.update_item(item['queue_id'], {
+                'queue_status': 'processing',
+                'started_at': time.time(),
+            })
+            _do_download_convert(
+                item['url'], item['file_id'],
+                item['format'], item['quality'],
+                item.get('native_fmt_id'),
+            )
+            final_status = get_status(item['file_id'])
+            if final_status.get('status') == 'completed':
+                _queue.update_item(item['queue_id'], {
+                    'queue_status': 'completed',
+                    'completed_at': time.time(),
+                    'title': final_status.get('video_title', item['title']),
+                })
+            else:
+                _queue.update_item(item['queue_id'], {
+                    'queue_status': 'failed',
+                    'completed_at': time.time(),
+                    'error': final_status.get('progress', 'Unknown error'),
+                })
+            _queue.reorder_positions()
+        except Exception as e:
+            logger.error(f"Queue worker error: {e}")
+            time.sleep(5)
 
 # ── download strategies ───────────────────────────────────────────────────────
 
@@ -239,62 +375,43 @@ def _find_ffmpeg():
 
 
 def get_available_formats(url):
-    """Fetch all available formats for a YouTube URL."""
     import yt_dlp
     try:
         cookiefile = get_valid_cookiefile()
-        opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'skip_download': True,
-            'socket_timeout': 20,
-        }
+        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'socket_timeout': 20}
         if cookiefile:
             opts['cookiefile'] = cookiefile
-
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if not info:
                 return None, 'Could not fetch video info'
-
             formats = info.get('formats', [])
             title = info.get('title', 'Unknown')
             duration = info.get('duration', 0)
             thumbnail = info.get('thumbnail', '')
-
-            # Group: native video+audio (direct download), video-only, audio-only
-            direct = []
-            video_only = []
-            audio_only = []
-
+            direct, video_only, audio_only = [], [], []
             for f in formats:
-                ext = f.get('ext', '')
                 vcodec = f.get('vcodec', 'none')
                 acodec = f.get('acodec', 'none')
                 height = f.get('height') or 0
                 filesize = f.get('filesize') or f.get('filesize_approx') or 0
                 tbr = f.get('tbr') or 0
-                fmt_id = f.get('format_id', '')
-                fmt_note = f.get('format_note', '')
-
                 entry = {
-                    'id': fmt_id,
-                    'ext': ext,
+                    'id': f.get('format_id', ''),
+                    'ext': f.get('ext', ''),
                     'height': height,
                     'vcodec': vcodec,
                     'acodec': acodec,
                     'tbr': round(tbr) if tbr else 0,
                     'size_mb': round(filesize / (1024*1024), 1) if filesize else 0,
-                    'note': fmt_note,
+                    'note': f.get('format_note', ''),
                 }
-
                 if vcodec != 'none' and acodec != 'none':
                     direct.append(entry)
                 elif vcodec != 'none':
                     video_only.append(entry)
                 elif acodec != 'none':
                     audio_only.append(entry)
-
             direct.sort(key=lambda x: x['height'], reverse=True)
             return {
                 'title': title,
@@ -325,7 +442,6 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
 
         temp_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.%(ext)s')
         temp_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.mp4')
-
         cookiefile = get_valid_cookiefile()
 
         if is_native and native_fmt_id:
@@ -357,7 +473,6 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
         last_error = None
         download_success = False
         video_title = 'video'
-
         strategies = DOWNLOAD_STRATEGIES if not is_native else [DOWNLOAD_STRATEGIES[0]]
 
         for i, strategy in enumerate(strategies):
@@ -443,9 +558,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
             r = subprocess.run(cmd, capture_output=True, timeout=3600)
             if r.returncode != 0:
                 os.rename(temp_mp4, out_path)
-
         else:
-            # native or mp4 without ffmpeg — keep as-is
             ext = os.path.splitext(temp_mp4)[1] or '.mp4'
             out_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}{ext}')
             os.rename(temp_mp4, out_path)
@@ -497,7 +610,6 @@ def search_youtube(query, max_results=10):
                         'duration': f'{int(dur//60)}:{int(dur%60):02d}' if dur else 'Unknown',
                         'channel': entry.get('channel', entry.get('uploader', 'Unknown')),
                         'thumbnail': f'https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg',
-                        'upload_date': entry.get('upload_date', ''),
                         'views': entry.get('view_count', ''),
                     })
     except Exception as e:
@@ -538,7 +650,7 @@ def _make_app():
     def gp3_page():
         return render_template('3gp.html', **common_ctx())
 
-    # ── convert ───────────────────────────────────────────────────────────────
+    # ── convert → queue ───────────────────────────────────────────────────────
 
     @app.route('/convert', methods=['POST'])
     def convert():
@@ -563,10 +675,68 @@ def _make_app():
 
         file_id = generate_file_id(url)
         update_status(file_id, {'status': 'queued', 'url': url, 'format': output_format, 'quality': quality})
-        t = threading.Thread(target=_do_download_convert,
-                             args=(url, file_id, output_format, quality, native_fmt_id), daemon=True)
-        t.start()
-        return redirect(f'/status_page/{file_id}')
+        _queue.add(url, file_id, output_format, quality, native_fmt_id)
+        return redirect('/queue')
+
+    # ── queue ─────────────────────────────────────────────────────────────────
+
+    @app.route('/queue')
+    def queue_page():
+        items = _queue.get_all()
+        # Enrich with live status from status file
+        for item in items:
+            live = get_status(item['file_id'])
+            item['live_status'] = live.get('status', item['queue_status'])
+            item['live_progress'] = live.get('progress', '')
+            item['file_size'] = live.get('file_size', 0)
+            item['video_title'] = live.get('video_title', '') or item['title']
+            item['output_path'] = live.get('output_path', '')
+            item['file_exists'] = os.path.exists(item['output_path']) if item['output_path'] else False
+        ctx = common_ctx()
+        ctx['queue_items'] = items
+        ctx['active_count'] = sum(1 for i in items if i['queue_status'] in ('pending', 'processing'))
+        ctx['done_count'] = sum(1 for i in items if i['queue_status'] == 'completed')
+        ctx['failed_count'] = sum(1 for i in items if i['queue_status'] == 'failed')
+        return render_template('queue.html', **ctx)
+
+    @app.route('/queue/status')
+    def queue_status_api():
+        items = _queue.get_all()
+        for item in items:
+            live = get_status(item['file_id'])
+            item['live_status'] = live.get('status', item['queue_status'])
+            item['live_progress'] = live.get('progress', '')
+            item['file_size'] = live.get('file_size', 0)
+            item['video_title'] = live.get('video_title', '') or item['title']
+        return jsonify(items)
+
+    @app.route('/queue/remove/<queue_id>', methods=['POST'])
+    def queue_remove(queue_id):
+        _queue.remove(queue_id)
+        return redirect('/queue')
+
+    @app.route('/queue/clear-done', methods=['POST'])
+    def queue_clear_done():
+        _queue.clear_done()
+        return redirect('/queue')
+
+    @app.route('/queue/retry/<queue_id>', methods=['POST'])
+    def queue_retry(queue_id):
+        items = _queue.get_all()
+        for item in items:
+            if item['queue_id'] == queue_id and item['queue_status'] == 'failed':
+                new_file_id = generate_file_id(item['url'])
+                update_status(new_file_id, {'status': 'queued', 'url': item['url'],
+                                            'format': item['format'], 'quality': item['quality']})
+                _queue.update_item(queue_id, {
+                    'file_id': new_file_id,
+                    'queue_status': 'pending',
+                    'error': None,
+                    'started_at': None,
+                    'completed_at': None,
+                })
+                break
+        return redirect('/queue')
 
     # ── status ────────────────────────────────────────────────────────────────
 
@@ -608,13 +778,12 @@ def _make_app():
         ctx.update({'query': query, 'results': results, 'show_thumbnails': show_thumbnails})
         return render_template('search.html', **ctx)
 
-    # ── available formats ─────────────────────────────────────────────────────
+    # ── formats ───────────────────────────────────────────────────────────────
 
     @app.route('/formats')
     def formats_page():
         url = request.args.get('url', '').strip()
-        fmt_data = None
-        error = None
+        fmt_data, error = None, None
         if url:
             fmt_data, error = get_available_formats(url)
         ctx = common_ctx()
@@ -645,13 +814,6 @@ def _make_app():
             item['file_exists'] = os.path.exists(info.get('output_path', ''))
             size = info.get('file_size', 0)
             item['file_size_mb'] = round(size / (1024 * 1024), 1) if size else 0
-            completed_at = info.get('completed_at', 0)
-            if completed_at:
-                from datetime import timedelta
-                remaining = timedelta(seconds=max(0, completed_at + 6 * 3600 - now))
-                item['time_remaining'] = remaining
-            else:
-                item['time_remaining'] = None
             history_items.append(item)
         history_items.sort(key=lambda x: x.get('completed_at', 0) or x.get('started_at', 0), reverse=True)
         ctx = common_ctx()
@@ -674,12 +836,10 @@ def _make_app():
 
     @app.route('/cookie-login')
     def cookie_login():
-        """Android MainActivity intercepts this URL and opens YouTube login WebView."""
         return render_template('cookie_login_redirect.html')
 
     @app.route('/save-cookies', methods=['POST'])
     def save_cookies():
-        """Receive cookies from Android CookieManager and save as Netscape format."""
         try:
             data = request.get_json(force=True)
             if not data:
@@ -697,7 +857,6 @@ def _make_app():
 
     @app.route('/upload-cookies', methods=['POST'])
     def upload_cookies():
-        """Manual cookie file upload (Netscape format)."""
         try:
             content = ''
             if 'cookie_file' in request.files:
@@ -756,6 +915,7 @@ def _make_app():
 def run_server():
     _copy_templates()
     threading.Thread(target=_auto_update_on_startup, daemon=True).start()
+    threading.Thread(target=_queue_worker, daemon=True).start()
     app = _make_app()
     logger.info("Starting Flask server on port 5000...")
     app.run(host='127.0.0.1', port=5000, threaded=True, use_reloader=False)
