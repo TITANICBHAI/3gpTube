@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "5uXyrQyBEebeZikJmzjDs"
+uri = "file://apk-output/3gpTube-debug.zip"
+type = "unspecified"
+title = "3gpTube Debug APK (31MB)"
+
+[[outputs]]
+id = "f2XxB1xWIxt7RlnHaNO5D"
+uri = "file://apk-output/3gpTube-release-unsigned.zip"
+type = "unspecified"
+title = "3gpTube Release APK - Unsigned (30MB)"
