@@ -23,6 +23,10 @@
 <input type="radio" name="format" value="mp4" id="fmt_mp4" onchange="showQuality()">
 <label for="fmt_mp4">MP4 Video</label>
 </p>
+<p style="margin: 5px 0;">
+<input type="radio" name="format" value="direct" id="fmt_direct" onchange="showQuality()">
+<label for="fmt_direct">Direct Download (No Conversion)</label>
+</p>
 
 <div id="q_3gp">
 <p><strong>3GP Video Quality:</strong></p>
@@ -53,6 +57,12 @@
 </select>
 </div>
 
+<div id="q_direct" style="display:none">
+<p style="font-size: 12px; color: #555; background: #e8f5e9; border: 1px solid #a5d6a7; padding: 8px; margin-bottom: 10px;">
+No FFmpeg needed. Downloads YouTube's best pre-packaged MP4 stream directly — fastest option, works on all devices.
+</p>
+</div>
+
 <p style="font-size: 12px; color: #666; margin-top: -5px;">Choose quality based on your selected format above</p>
 
 <p><strong>Subtitle Options - EXPERIMENTAL (3GP Video Only):</strong></p>
@@ -73,6 +83,7 @@ function showQuality() {
   document.getElementById('q_3gp').style.display = f === '3gp' ? 'block' : 'none';
   document.getElementById('q_mp3').style.display = f === 'mp3' ? 'block' : 'none';
   document.getElementById('q_mp4').style.display = f === 'mp4' ? 'block' : 'none';
+  document.getElementById('q_direct').style.display = f === 'direct' ? 'block' : 'none';
 }
 document.querySelectorAll('input[name=format]').forEach(function(r) {
   r.addEventListener('change', showQuality);

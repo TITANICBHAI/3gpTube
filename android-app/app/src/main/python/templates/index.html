@@ -12,7 +12,8 @@
 <div style="margin-bottom:10px">
   <label><input type="radio" name="format" value="3gp" id="fmt3gp" checked onchange="showQuality()"> 3GP (Feature Phone)</label><br>
   <label><input type="radio" name="format" value="mp3" id="fmtMp3" onchange="showQuality()"> MP3 Audio</label><br>
-  <label><input type="radio" name="format" value="mp4" id="fmtMp4" onchange="showQuality()"> MP4 Video</label>
+  <label><input type="radio" name="format" value="mp4" id="fmtMp4" onchange="showQuality()"> MP4 Video</label><br>
+  <label><input type="radio" name="format" value="direct" id="fmtDirect" onchange="showQuality()"> Direct Download (No FFmpeg)</label>
 </div>
 
 <div id="q3gp">
@@ -42,7 +43,13 @@
   <option value="{{ k }}" {% if k=='480p' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
   {% endfor %}
 </select>
-<p style="font-size:12px;color:#666;margin-top:-5px">FFmpeg re-encode for compatibility</p>
+<p style="font-size:12px;color:#666;margin-top:-5px">Requires FFmpeg on device</p>
+</div>
+
+<div id="qDirect" style="display:none">
+<p style="font-size:12px;color:#555;background:#e8f5e9;border:1px solid #a5d6a7;padding:8px;margin:5px 0">
+No FFmpeg needed. Gets YouTube's best pre-packaged MP4 directly — fastest, works without any conversion tools.
+</p>
 </div>
 
 <button type="submit">Start Conversion</button>
@@ -81,6 +88,7 @@ function showQuality(){
   document.getElementById('q3gp').style.display=f.value==='3gp'?'block':'none';
   document.getElementById('qMp3').style.display=f.value==='mp3'?'block':'none';
   document.getElementById('qMp4').style.display=f.value==='mp4'?'block':'none';
+  document.getElementById('qDirect').style.display=f.value==='direct'?'block':'none';
 }
 showQuality();
 document.querySelectorAll('input[name=format]').forEach(function(r){r.addEventListener('change',showQuality)});

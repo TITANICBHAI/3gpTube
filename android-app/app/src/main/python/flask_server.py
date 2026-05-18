@@ -439,6 +439,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
         is_3gp = output_format == '3gp'
         is_mp4 = output_format == 'mp4'
         is_native = output_format == 'native'
+        is_direct = output_format == 'direct'
 
         temp_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.%(ext)s')
         temp_mp4 = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.mp4')
@@ -446,6 +447,9 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
 
         if is_native and native_fmt_id:
             fmt_str = native_fmt_id
+        elif is_direct:
+            # Pre-muxed stream — no FFmpeg merging or re-encoding needed
+            fmt_str = 'best[ext=mp4]/best[ext=webm]/best'
         elif is_mp3:
             fmt_str = 'bestaudio/best'
         elif is_3gp:
@@ -473,7 +477,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
         last_error = None
         download_success = False
         video_title = 'video'
-        strategies = DOWNLOAD_STRATEGIES if not is_native else [DOWNLOAD_STRATEGIES[0]]
+        strategies = DOWNLOAD_STRATEGIES if not (is_native or is_direct) else [DOWNLOAD_STRATEGIES[0]]
 
         for i, strategy in enumerate(strategies):
             try:
@@ -507,7 +511,31 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
 
         ffmpeg = _find_ffmpeg()
 
-        if is_mp3:
+        if is_direct:
+            # No FFmpeg — just save the downloaded file as-is
+            actual_ext = 'mp4'
+            for candidate_ext in ['mp4', 'webm', 'mkv']:
+                candidate = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.{candidate_ext}')
+                if os.path.exists(candidate):
+                    actual_ext = candidate_ext
+                    break
+            actual_temp = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.{actual_ext}')
+            out_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.{actual_ext}')
+            if os.path.exists(actual_temp):
+                os.rename(actual_temp, out_path)
+            else:
+                os.rename(temp_mp4, out_path)
+            file_size = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+            update_status(file_id, {
+                'status': 'completed', 'progress': 'Done! (direct download, no conversion)',
+                'out_path': out_path, 'file_size': file_size,
+                'title': video_title or 'video',
+                'duration': 0, 'format': output_format,
+                'timestamp': time.time(),
+            })
+            return
+
+        elif is_mp3:
             preset = MP3_PRESETS.get(quality, MP3_PRESETS['high'])
             out_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.mp3')
             update_status(file_id, {'status': 'converting', 'progress': f'Converting to MP3 ({preset["name"]})...'})
@@ -729,6 +757,8 @@ def _make_app():
             quality = request.form.get('mp3_quality', 'high')
         elif output_format == '3gp':
             quality = request.form.get('video_quality', 'low')
+        elif output_format == 'direct':
+            quality = 'auto'
         else:
             quality = request.form.get('quality', 'auto')
 

@@ -1312,6 +1312,9 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
     elif output_format == 'mp4':
         file_extension = 'mp4'
         format_name = 'MP4 video'
+    elif output_format == 'direct':
+        file_extension = 'mp4'
+        format_name = 'Direct MP4 (no conversion)'
     else:
         file_extension = '3gp'
         format_name = '3GP video'
@@ -1325,7 +1328,7 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         else:
             quality = 'low'
 
-    # Validate quality preset
+    # Validate quality preset (direct download needs no preset)
     if output_format == 'mp3':
         if quality not in MP3_QUALITY_PRESETS:
             quality = 'medium'
@@ -1334,6 +1337,8 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if quality not in MP4_PRESETS:
             quality = '480p'
         quality_preset = MP4_PRESETS[quality]
+    elif output_format == 'direct':
+        quality_preset = {'name': 'Best available (no conversion)'}
     else:
         if quality not in VIDEO_QUALITY_PRESETS:
             quality = 'low'
@@ -1360,9 +1365,11 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
         if output_format == 'mp3':
             # For audio: get best audio, any format
             format_str = 'bestaudio/best'
+        elif output_format == 'direct':
+            # Pre-muxed stream only — no FFmpeg merging or re-encoding needed
+            format_str = 'best[ext=mp4]/best[ext=webm]/best'
         else:
             # For video: prefer smaller files but accept anything available
-            # Try: low quality video+audio, then medium, then any available
             format_str = 'worst[height<=480]+worstaudio/bestvideo[height<=480]+bestaudio/best[height<=480]/worst+worstaudio/best'
 
         base_opts = {
@@ -1763,7 +1770,35 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
 
         est_time = max(1, int(duration / 60))
 
-        if output_format == 'mp3':
+        if output_format == 'direct':
+            update_status(file_id, {
+                'status': 'converting',
+                'progress': f'Saving direct download (no conversion)... Size: {file_size_mb:.1f} MB.'
+            })
+            # Detect actual extension of the downloaded file
+            actual_ext = 'mp4'
+            for candidate_ext in ['mp4', 'webm', 'mkv', 'avi']:
+                candidate = os.path.join(DOWNLOAD_FOLDER, f'{file_id}_temp.{candidate_ext}')
+                if os.path.exists(candidate):
+                    actual_ext = candidate_ext
+                    temp_video_actual = candidate
+                    break
+            else:
+                temp_video_actual = temp_video
+            output_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.{actual_ext}')
+            os.rename(temp_video_actual, output_path)
+            # Skip FFmpeg entirely - go straight to completion
+            update_status(file_id, {
+                'status': 'completed',
+                'progress': f'✓ Direct download ready ({file_size_mb:.1f} MB) - no conversion needed',
+                'file_size': file_size,
+                'duration': duration,
+                'url': url,
+                'timestamp': datetime.now().isoformat()
+            })
+            return
+
+        elif output_format == 'mp3':
             update_status(file_id, {
                 'status': 'converting',
                 'progress': f'Converting to MP3 audio ({quality_preset["name"]})... Duration: {duration/60:.1f} minutes, Size: {file_size_mb:.1f} MB. Estimated time: {est_time} minute(s).'
@@ -2259,6 +2294,8 @@ def convert():
         quality = request.form.get('mp3_quality', 'auto').strip()
     elif output_format == 'mp4':
         quality = request.form.get('mp4_quality', '480p').strip()
+    elif output_format == 'direct':
+        quality = 'auto'
     else:
         quality = request.form.get('video_quality', 'auto').strip()
 
@@ -2275,7 +2312,7 @@ def convert():
 
     is_youtube = 'youtube.com' in url or 'youtu.be' in url
 
-    if output_format not in ['3gp', 'mp3', 'mp4']:
+    if output_format not in ['3gp', 'mp3', 'mp4', 'direct']:
         output_format = '3gp'
 
     # Check if URL is a YouTube playlist

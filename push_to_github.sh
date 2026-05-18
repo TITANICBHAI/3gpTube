@@ -28,19 +28,26 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: add MP4 support to web app + fix Android search MP4 consistency
+  git -C /home/runner/workspace commit -m "feat: add Direct Download (no FFmpeg) format to web + Android
 
-Web app (app.py + templates):
-- Add MP4_PRESETS (360p/480p/720p/1080p) to app.py
-- Add MP4 ffmpeg conversion (libx264 + faststart) with retry fallback
-- Allow mp4 in convert route; pick mp4_quality from form
-- Pass mp4_presets to index and all search render_template calls
-- Add MP4 radio + quality dropdown + JS show/hide to index.html
-- Add MP4 radio + quality dropdown + JS show/hide to search.html
+Web app (app.py + templates/index.html + templates/search.html):
+- Add 'direct' format: yt-dlp best[ext=mp4]/best[ext=webm]/best
+- Skip FFmpeg entirely — detect actual extension, rename temp file
+- Allow 'direct' in convert route; quality auto-set to 'auto'
+- Add quality_preset stub so status logging doesn't crash
+- Add Direct Download radio button + info panel to index.html
+- Add Direct radio + info panel to search.html per result
 
-Android app:
-- Add MP4 radio + quality dropdown + JS to android search.html
-- Consistent across index, playlist, formats, and search screens"
+Android (flask_server.py + both templates):
+- Add is_direct flag; fmt_str uses pre-muxed stream selector
+- Post-download: detect extension, rename, mark completed with no FFmpeg
+- Direct skips retry strategies same as native
+- Add Direct Download radio to android index.html + search.html
+- Note 3GP/MP4 now show 'Requires FFmpeg on device' warning
+
+Motivation: Android APK ships no FFmpeg binary; 3GP silently
+falls back to MP4 and MP3 postprocessor also needs FFmpeg.
+Direct Download is the recommended Android-safe format."
 fi
 
 echo "[3] Pushing to GitHub..."

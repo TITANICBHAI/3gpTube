@@ -54,6 +54,8 @@
     <label for="v{{ loop.index }}_mp3">MP3</label>
     <input type="radio" name="format" value="mp4" id="v{{ loop.index }}_mp4" onchange="showQ{{ loop.index }}(this)">
     <label for="v{{ loop.index }}_mp4">MP4</label>
+    <input type="radio" name="format" value="direct" id="v{{ loop.index }}_direct" onchange="showQ{{ loop.index }}(this)">
+    <label for="v{{ loop.index }}_direct">Direct</label>
     </p>
 
     <div id="v{{ loop.index }}_q3gp">
@@ -87,6 +89,12 @@
     </select>
     </div>
 
+    <div id="v{{ loop.index }}_qdirect" style="display:none">
+    <p style="font-size:11px;color:#555;background:#e8f5e9;border:1px solid #a5d6a7;padding:6px;margin:5px 0">
+    No FFmpeg. Downloads YouTube's best pre-packaged MP4 directly.
+    </p>
+    </div>
+
     <button type="submit">Convert This</button>
     </form>
 
@@ -95,6 +103,7 @@
       document.getElementById('v{{ loop.index }}_q3gp').style.display = r.value === '3gp' ? 'block' : 'none';
       document.getElementById('v{{ loop.index }}_qmp3').style.display = r.value === 'mp3' ? 'block' : 'none';
       document.getElementById('v{{ loop.index }}_qmp4').style.display = r.value === 'mp4' ? 'block' : 'none';
+      document.getElementById('v{{ loop.index }}_qdirect').style.display = r.value === 'direct' ? 'block' : 'none';
     }
     </script>
 
