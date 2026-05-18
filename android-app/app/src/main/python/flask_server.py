@@ -363,6 +363,17 @@ MAX_HOURS = 24
 
 
 def _find_ffmpeg():
+    # Try Android ffmpeg-kit library first (Chaquopy Java bridge)
+    try:
+        from java import jclass
+        FFmpegKit = jclass('com.arthenica.ffmpegkit.FFmpegKit')
+        session = FFmpegKit.execute('-version')
+        if session.getReturnCode().isValueSuccess():
+            return '__ffmpeg_kit__'
+    except Exception:
+        pass
+
+    # Fall back to system binary
     candidates = [os.path.join(APP_DIR, 'ffmpeg'), '/data/local/tmp/ffmpeg', 'ffmpeg']
     for c in candidates:
         try:
@@ -372,6 +383,42 @@ def _find_ffmpeg():
         except Exception:
             pass
     return None
+
+
+class _FFmpegResult:
+    """Subprocess-compatible result object for ffmpeg-kit calls."""
+    def __init__(self, returncode, stderr=b''):
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def _run_ffmpeg(cmd, timeout=3600):
+    """
+    Unified FFmpeg runner — works on Android (ffmpeg-kit) and desktop (subprocess).
+    cmd[0] is the ffmpeg binary path (or '__ffmpeg_kit__') — always skipped for args.
+    cmd[1:] are the FFmpeg arguments passed verbatim.
+    Returns an object with .returncode and .stderr attributes.
+    """
+    if cmd and cmd[0] == '__ffmpeg_kit__':
+        try:
+            from java import jclass
+            import shlex
+            FFmpegKit = jclass('com.arthenica.ffmpegkit.FFmpegKit')
+            cmd_str = ' '.join(shlex.quote(str(a)) for a in cmd[1:])
+            session = FFmpegKit.execute(cmd_str)
+            rc = session.getReturnCode()
+            success = bool(rc.isValueSuccess())
+            logs = ''
+            try:
+                logs = session.getLogsAsString() or ''
+            except Exception:
+                pass
+            return _FFmpegResult(0 if success else 1, logs.encode('utf-8', errors='replace'))
+        except Exception as e:
+            return _FFmpegResult(1, str(e).encode())
+
+    # Standard subprocess path (desktop / non-Android)
+    return subprocess.run(cmd, capture_output=True, timeout=timeout)
 
 
 def get_available_formats(url):
@@ -542,7 +589,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
             if ffmpeg:
                 cmd = [ffmpeg, '-y', '-i', temp_mp4, '-vn', '-acodec', 'libmp3lame',
                        '-b:a', preset['bitrate'], '-ac', '2', out_path]
-                r = subprocess.run(cmd, capture_output=True, timeout=3600)
+                r = _run_ffmpeg(cmd, timeout=3600)
                 if r.returncode != 0:
                     raise Exception(f'FFmpeg MP3 failed: {r.stderr.decode()[:200]}')
             else:
@@ -566,7 +613,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
                        '-b:v', preset['video_bitrate'], '-acodec', 'aac',
                        '-b:a', preset['audio_bitrate'], '-ar', '8000', '-ac', '1',
                        '-f', '3gp', out_path]
-                r = subprocess.run(cmd, capture_output=True, timeout=3600)
+                r = _run_ffmpeg(cmd, timeout=3600)
                 if r.returncode != 0:
                     os.rename(temp_mp4, out_path.replace('.3gp', '.mp4'))
                     out_path = out_path.replace('.3gp', '.mp4')
@@ -583,7 +630,7 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
                    '-vf', f'scale=-2:{h}', '-c:v', 'libx264', '-preset', 'fast',
                    '-b:v', preset['video_bitrate'], '-c:a', 'aac',
                    '-b:a', preset['audio_bitrate'], '-movflags', '+faststart', out_path]
-            r = subprocess.run(cmd, capture_output=True, timeout=3600)
+            r = _run_ffmpeg(cmd, timeout=3600)
             if r.returncode != 0:
                 os.rename(temp_mp4, out_path)
         else:

@@ -22,7 +22,7 @@ android {
         python {
             buildPython "python3"
             pip {
-                install "yt-dlp"
+                install "yt-dlp>=2026.3.17"
                 install "requests"
                 install "flask"
                 install "jinja2"
@@ -57,4 +57,5 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'com.arthenica:ffmpeg-kit-audio-gpl:6.0.LTS'
 }
