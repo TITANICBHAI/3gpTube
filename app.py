@@ -177,6 +177,37 @@ MP3_QUALITY_PRESETS = {
     }
 }
 
+MP4_PRESETS = {
+    '360p': {
+        'name': '360p SD',
+        'height': 360,
+        'video_bitrate': '600k',
+        'audio_bitrate': '128k',
+        'description': '~25 MB per 5 min'
+    },
+    '480p': {
+        'name': '480p SD',
+        'height': 480,
+        'video_bitrate': '1000k',
+        'audio_bitrate': '128k',
+        'description': '~40 MB per 5 min'
+    },
+    '720p': {
+        'name': '720p HD',
+        'height': 720,
+        'video_bitrate': '2500k',
+        'audio_bitrate': '192k',
+        'description': '~90 MB per 5 min'
+    },
+    '1080p': {
+        'name': '1080p Full HD',
+        'height': 1080,
+        'video_bitrate': '5000k',
+        'audio_bitrate': '192k',
+        'description': '~180 MB per 5 min'
+    },
+}
+
 # Quality presets for 3GP video conversion
 # Note: Updated with higher audio bitrates for better quality
 VIDEO_QUALITY_PRESETS = {
@@ -1275,21 +1306,34 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 })
                 return
 
-    file_extension = 'mp3' if output_format == 'mp3' else '3gp'
-    format_name = 'MP3 audio' if output_format == 'mp3' else '3GP video'
+    if output_format == 'mp3':
+        file_extension = 'mp3'
+        format_name = 'MP3 audio'
+    elif output_format == 'mp4':
+        file_extension = 'mp4'
+        format_name = 'MP4 video'
+    else:
+        file_extension = '3gp'
+        format_name = '3GP video'
 
     # Auto-select quality if not specified
     if quality == 'auto':
         if output_format == 'mp3':
-            quality = 'medium'  # 128kbps default for MP3
+            quality = 'medium'
+        elif output_format == 'mp4':
+            quality = '480p'
         else:
-            quality = 'low'  # Low quality default for 3GP (feature phone optimized)
+            quality = 'low'
 
     # Validate quality preset
     if output_format == 'mp3':
         if quality not in MP3_QUALITY_PRESETS:
             quality = 'medium'
         quality_preset = MP3_QUALITY_PRESETS[quality]
+    elif output_format == 'mp4':
+        if quality not in MP4_PRESETS:
+            quality = '480p'
+        quality_preset = MP4_PRESETS[quality]
     else:
         if quality not in VIDEO_QUALITY_PRESETS:
             quality = 'low'
@@ -1740,6 +1784,26 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                 '-y',
                 output_path
             ]
+        elif output_format == 'mp4':
+            update_status(file_id, {
+                'status': 'converting',
+                'progress': f'Converting to MP4 video ({quality_preset["name"]})... Duration: {duration/60:.1f} minutes, Size: {file_size_mb:.1f} MB. Estimated time: {est_time}-{est_time*2} minutes.'
+            })
+
+            convert_cmd = [
+                '-threads', str(FFMPEG_THREADS),
+                '-i', temp_video,
+                '-vf', f'scale=-2:{quality_preset["height"]}',
+                '-vcodec', 'libx264',
+                '-preset', 'fast',
+                '-b:v', quality_preset['video_bitrate'],
+                '-acodec', 'aac',
+                '-b:a', quality_preset['audio_bitrate'],
+                '-ac', '2',
+                '-movflags', '+faststart',
+                '-y',
+                output_path
+            ]
         else:
             update_status(file_id, {
                 'status': 'converting',
@@ -1800,6 +1864,21 @@ def download_and_convert(url, file_id, output_format='3gp', quality='auto', burn
                     '-ar', quality_preset['sample_rate'],  # Use selected quality
                     '-b:a', quality_preset['bitrate'],  # Use selected quality
                     '-ac', '2',  # Stereo as per preset
+                    '-y',
+                    output_path
+                ]
+            elif output_format == 'mp4':
+                simple_cmd = [
+                    '-threads', str(FFMPEG_THREADS),
+                    '-i', temp_video,
+                    '-vf', f'scale=-2:{quality_preset["height"]}',
+                    '-vcodec', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-b:v', quality_preset['video_bitrate'],
+                    '-acodec', 'aac',
+                    '-b:a', quality_preset['audio_bitrate'],
+                    '-ac', '2',
+                    '-movflags', '+faststart',
                     '-y',
                     output_path
                 ]
@@ -2053,7 +2132,8 @@ def index():
                          max_hours=max_hours, 
                          has_cookies=cookies_status,
                          mp3_presets=MP3_QUALITY_PRESETS,
-                         video_presets=VIDEO_QUALITY_PRESETS)
+                         video_presets=VIDEO_QUALITY_PRESETS,
+                         mp4_presets=MP4_PRESETS)
 
 @app.route('/mp3')
 def mp3_converter():
@@ -2177,6 +2257,8 @@ def convert():
     # Get quality based on selected format
     if output_format == 'mp3':
         quality = request.form.get('mp3_quality', 'auto').strip()
+    elif output_format == 'mp4':
+        quality = request.form.get('mp4_quality', '480p').strip()
     else:
         quality = request.form.get('video_quality', 'auto').strip()
 
@@ -2193,7 +2275,7 @@ def convert():
 
     is_youtube = 'youtube.com' in url or 'youtu.be' in url
 
-    if output_format not in ['3gp', 'mp3']:
+    if output_format not in ['3gp', 'mp3', 'mp4']:
         output_format = '3gp'
 
     # Check if URL is a YouTube playlist
@@ -2868,7 +2950,7 @@ def search():
     if not query:
         if request.method == 'POST':
             flash('Please enter a search term')
-        return render_template('search.html', results=None, query='', show_thumbnails=show_thumbnails)
+        return render_template('search.html', results=None, query='', show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
 
     # Execute the search (query is guaranteed to exist here)
     try:
@@ -2904,11 +2986,11 @@ def search():
                 flash('YouTube blocked the search. Try uploading cookies from /cookies page.')
             else:
                 flash('YouTube search error. Please try again.')
-            return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails)
+            return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
         except Exception as e:
             logger.error(f"Search extraction error: {str(e)}")
             flash('Search failed. Please try again later.')
-            return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails)
+            return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
 
         # Process search results
         if search_results and 'entries' in search_results:
@@ -2972,15 +3054,15 @@ def search():
         # Validate we got results
         if not results:
             flash('No results found. Try different search terms.')
-            return render_template('search.html', results=[], query=query, show_thumbnails=show_thumbnails)
+            return render_template('search.html', results=[], query=query, show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
 
-        return render_template('search.html', results=results, query=query, show_thumbnails=show_thumbnails)
+        return render_template('search.html', results=results, query=query, show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
 
     except Exception as e:
         # Catch any unexpected errors not handled by inner try-except
         logger.error(f"Unexpected search error: {str(e)}")
         flash('An unexpected error occurred. Please try again.')
-        return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails)
+        return render_template('search.html', results=None, query=query, show_thumbnails=show_thumbnails, mp4_presets=MP4_PRESETS)
 
 @app.route('/cookies', methods=['GET', 'POST'])
 def cookies_page():

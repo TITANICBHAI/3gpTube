@@ -28,13 +28,19 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: add MP4 option to search results screen (Android)
+  git -C /home/runner/workspace commit -m "feat: add MP4 support to web app + fix Android search MP4 consistency
 
-- Add MP4 radio button alongside 3GP and MP3 in search.html
-- Add MP4 quality dropdown using mp4_presets (360p/480p/720p/1080p)
-- Add per-result JS to show/hide correct quality section on format change
-- Fix 3GP/MP3 quality divs to also hide/show correctly on toggle
-- Consistent with index.html, playlist.html and formats.html"
+Web app (app.py + templates):
+- Add MP4_PRESETS (360p/480p/720p/1080p) to app.py
+- Add MP4 ffmpeg conversion (libx264 + faststart) with retry fallback
+- Allow mp4 in convert route; pick mp4_quality from form
+- Pass mp4_presets to index and all search render_template calls
+- Add MP4 radio + quality dropdown + JS show/hide to index.html
+- Add MP4 radio + quality dropdown + JS show/hide to search.html
+
+Android app:
+- Add MP4 radio + quality dropdown + JS to android search.html
+- Consistent across index, playlist, formats, and search screens"
 fi
 
 echo "[3] Pushing to GitHub..."

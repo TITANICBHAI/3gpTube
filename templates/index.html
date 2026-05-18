@@ -12,14 +12,19 @@
 
 <p><strong>Select Format:</strong></p>
 <p style="margin: 5px 0;">
-<input type="radio" name="format" value="3gp" id="fmt_3gp" checked>
+<input type="radio" name="format" value="3gp" id="fmt_3gp" checked onchange="showQuality()">
 <label for="fmt_3gp">3GP Video (176x144)</label>
 </p>
 <p style="margin: 5px 0;">
-<input type="radio" name="format" value="mp3" id="fmt_mp3">
+<input type="radio" name="format" value="mp3" id="fmt_mp3" onchange="showQuality()">
 <label for="fmt_mp3">MP3 Audio Only</label>
 </p>
+<p style="margin: 5px 0;">
+<input type="radio" name="format" value="mp4" id="fmt_mp4" onchange="showQuality()">
+<label for="fmt_mp4">MP4 Video</label>
+</p>
 
+<div id="q_3gp">
 <p><strong>3GP Video Quality:</strong></p>
 <select name="video_quality" style="width: 100%; padding: 8px; margin-bottom: 10px;">
 <option value="auto">Auto (Recommended - Low Quality)</option>
@@ -27,7 +32,9 @@
 <option value="{{ key }}">{{ preset.name }} - {{ preset.description }}</option>
 {% endfor %}
 </select>
+</div>
 
+<div id="q_mp3" style="display:none">
 <p><strong>MP3 Audio Quality:</strong></p>
 <select name="mp3_quality" style="width: 100%; padding: 8px; margin-bottom: 10px;">
 <option value="auto">Auto (Recommended - 128kbps)</option>
@@ -35,6 +42,17 @@
 <option value="{{ key }}">{{ preset.name }} - {{ preset.description }}</option>
 {% endfor %}
 </select>
+</div>
+
+<div id="q_mp4" style="display:none">
+<p><strong>MP4 Video Quality:</strong></p>
+<select name="mp4_quality" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+{% for key, preset in mp4_presets.items() %}
+<option value="{{ key }}" {% if key == '480p' %}selected{% endif %}>{{ preset.name }} - {{ preset.description }}</option>
+{% endfor %}
+</select>
+</div>
+
 <p style="font-size: 12px; color: #666; margin-top: -5px;">Choose quality based on your selected format above</p>
 
 <p><strong>Subtitle Options - EXPERIMENTAL (3GP Video Only):</strong></p>
@@ -48,6 +66,18 @@
 
 <button type="submit">Start Conversion</button>
 </form>
+
+<script>
+function showQuality() {
+  var f = document.querySelector('input[name=format]:checked').value;
+  document.getElementById('q_3gp').style.display = f === '3gp' ? 'block' : 'none';
+  document.getElementById('q_mp3').style.display = f === 'mp3' ? 'block' : 'none';
+  document.getElementById('q_mp4').style.display = f === 'mp4' ? 'block' : 'none';
+}
+document.querySelectorAll('input[name=format]').forEach(function(r) {
+  r.addEventListener('change', showQuality);
+});
+</script>
 
 <hr>
 
@@ -66,7 +96,7 @@
 <h2>How it works:</h2>
 <ul>
 <li><strong>1.</strong> Paste any YouTube URL above</li>
-<li><strong>2.</strong> Choose 3GP video or MP3 audio</li>
+<li><strong>2.</strong> Choose 3GP, MP3 or MP4</li>
 <li><strong>3.</strong> Pick your quality (or use Auto)</li>
 <li><strong>4.</strong> Wait for conversion (1-10 minutes)</li>
 <li><strong>5.</strong> Download and enjoy on your phone!</li>
@@ -85,6 +115,13 @@
 <li>High: ~6 MB per 5 min (18fps, 400k video)</li>
 </ul>
 <p style="font-size: 12px; color: #666;">All 3GP videos: 24kbps AAC audio, 176x144 resolution</p>
+<p><strong>MP4 Video Quality Options:</strong></p>
+<ul>
+<li>360p SD: ~25 MB per 5 min</li>
+<li>480p SD: ~40 MB per 5 min</li>
+<li>720p HD: ~90 MB per 5 min</li>
+<li>1080p Full HD: ~180 MB per 5 min</li>
+</ul>
 <p><strong>MP3 Audio Quality Options:</strong></p>
 <ul>
 <li>128 kbps: ~5 MB per 5 min (good)</li>
@@ -94,7 +131,6 @@
 </ul>
 <p><strong>All formats:</strong></p>
 <ul>
-<li>Resolution: 176x144 (3GP only)</li>
 <li>Max length: {{ max_hours|int }} hours</li>
 <li>Files auto-delete after 6 hours</li>
 </ul>
