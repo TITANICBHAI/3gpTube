@@ -28,12 +28,13 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "fix: add Material Components dependency to resolve Android build failure
+  git -C /home/runner/workspace commit -m "feat: add MP4 option to search results screen (Android)
 
-- Add com.google.android.material:material:1.11.0 to app/build.gradle
-- Fixes missing Theme.MaterialComponents.DayNight.DarkActionBar and
-  related colorPrimaryVariant/colorOnPrimary/colorSecondary attributes
-- Resolves processDebugResources FAILED in GitHub Actions CI build"
+- Add MP4 radio button alongside 3GP and MP3 in search.html
+- Add MP4 quality dropdown using mp4_presets (360p/480p/720p/1080p)
+- Add per-result JS to show/hide correct quality section on format change
+- Fix 3GP/MP3 quality divs to also hide/show correctly on toggle
+- Consistent with index.html, playlist.html and formats.html"
 fi
 
 echo "[3] Pushing to GitHub..."
