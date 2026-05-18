@@ -28,15 +28,24 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "fix: correct ffmpeg-kit artifact name + revert yt-dlp version pin
+  git -C /home/runner/workspace commit -m "fix: remove broken ffmpeg-kit dep; M4A fallback + Direct as Android default
 
 build.gradle:
-- ffmpeg-kit-audio-gpl does not exist on Maven Central — use
-  com.arthenica:ffmpeg-kit-full-gpl:6.0.LTS (confirmed available)
-  Covers: H.263 (3GP), libmp3lame (MP3), libx264 (MP4 H.264)
-- Revert yt-dlp version pin: Chaquopy mirror only has 2024.10.22,
-  pinning >=2026.3.17 would cause a Chaquopy resolution failure;
-  leave unpinned so Chaquopy uses latest it can resolve"
+- Remove com.arthenica:ffmpeg-kit-full-gpl — library is abandoned,
+  all GitHub release assets removed, Maven Central entries are 404,
+  GitHub Packages requires auth; no reliable distribution path exists.
+  _run_ffmpeg() bridge kept as future-ready infrastructure.
+
+flask_server.py:
+- MP3 without FFmpeg: instead of broken FFmpegExtractAudio postprocessor,
+  download native AAC/M4A audio stream directly (bestaudio[ext=m4a]);
+  M4A plays natively on all Android devices without conversion.
+- M4A fallback detects actual downloaded extension (m4a/aac/webm/opus).
+
+android templates/index.html:
+- Rename 'Direct Download (No FFmpeg)' -> 'Direct Download (Recommended)'
+- Set Direct Download as DEFAULT selected format on page load
+- Update info panel copy to be clearer about Android compatibility"
 fi
 
 echo "[3] Pushing to GitHub..."

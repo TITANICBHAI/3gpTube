@@ -57,5 +57,9 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'com.arthenica:ffmpeg-kit-full-gpl:6.0.LTS'
+    // FFmpeg note: ffmpeg-kit library is abandoned (all GitHub release assets removed,
+    // Maven Central entries are stale/undownloadable as of 2025).
+    // FFmpeg conversion on Android is handled via _run_ffmpeg() in flask_server.py
+    // which will use a binary at APP_DIR/ffmpeg if one is ever provided at runtime,
+    // or fall back gracefully (Direct Download / M4A audio).
 }

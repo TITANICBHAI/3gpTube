@@ -593,15 +593,27 @@ def _do_download_convert(url, file_id, output_format, quality, native_fmt_id=Non
                 if r.returncode != 0:
                     raise Exception(f'FFmpeg MP3 failed: {r.stderr.decode()[:200]}')
             else:
+                # No FFmpeg — download native AAC/M4A audio directly (Android-compatible)
+                update_status(file_id, {'status': 'converting', 'progress': 'No FFmpeg — downloading native AAC audio (M4A)...'})
+                m4a_path = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.m4a')
                 opts2 = {
-                    'format': 'bestaudio/best',
-                    'outtmpl': out_path.replace('.mp3', '.%(ext)s'),
-                    'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3',
-                                        'preferredquality': preset['bitrate'].replace('k', '')}],
+                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=aac]/bestaudio',
+                    'outtmpl': m4a_path.replace('.m4a', '.%(ext)s'),
                     'quiet': True,
+                    'no_warnings': True,
                 }
+                if cookiefile:
+                    opts2['cookiefile'] = cookiefile
                 with yt_dlp.YoutubeDL(opts2) as ydl:
                     ydl.download([url])
+                # Find and rename to .m4a (playable on Android natively)
+                for ext in ['m4a', 'aac', 'webm', 'opus']:
+                    candidate = os.path.join(DOWNLOAD_FOLDER, f'{file_id}.{ext}')
+                    if os.path.exists(candidate):
+                        out_path = candidate
+                        break
+                else:
+                    out_path = m4a_path  # fallback path
 
         elif is_3gp:
             preset = VIDEO_PRESETS.get(quality, VIDEO_PRESETS['low'])
