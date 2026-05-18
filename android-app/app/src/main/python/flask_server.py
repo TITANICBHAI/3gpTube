@@ -617,6 +617,71 @@ def search_youtube(query, max_results=10):
     return results
 
 
+# ── playlist ──────────────────────────────────────────────────────────────────
+
+def is_playlist_url(url):
+    patterns = [
+        r'[?&]list=PL',
+        r'[?&]list=RD',
+        r'[?&]list=UU',
+        r'[?&]list=FL',
+        r'[?&]list=LL',
+        r'[?&]list=WL',
+        r'[?&]list=[A-Za-z0-9_-]{10,}',
+        r'youtube\.com/playlist\?',
+    ]
+    return any(re.search(p, url) for p in patterns)
+
+
+def get_playlist_info(url, max_entries=50):
+    """Fetch playlist title and list of {id, title, duration, url} entries."""
+    import yt_dlp
+    try:
+        cookiefile = get_valid_cookiefile()
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': 'in_playlist',
+            'socket_timeout': 30,
+            'playlistend': max_entries,
+        }
+        if cookiefile:
+            opts['cookiefile'] = cookiefile
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return None, 'Could not fetch playlist info'
+
+            playlist_title = info.get('title', 'Unknown Playlist')
+            uploader = info.get('uploader', info.get('channel', ''))
+            entries = info.get('entries', [])
+            total = info.get('playlist_count') or len(entries)
+
+            videos = []
+            for entry in entries:
+                if not entry:
+                    continue
+                vid_id = entry.get('id', '')
+                dur = entry.get('duration', 0)
+                videos.append({
+                    'id': vid_id,
+                    'title': entry.get('title', 'Unknown'),
+                    'url': f'https://www.youtube.com/watch?v={vid_id}',
+                    'duration': f'{int(dur//60)}:{int(dur%60):02d}' if dur else '?',
+                    'channel': entry.get('channel', entry.get('uploader', '')),
+                })
+
+            return {
+                'playlist_title': playlist_title,
+                'uploader': uploader,
+                'total': total,
+                'fetched': len(videos),
+                'videos': videos,
+            }, None
+    except Exception as e:
+        return None, str(e)[:300]
+
+
 # ── Flask app ─────────────────────────────────────────────────────────────────
 
 def _make_app():
@@ -672,6 +737,11 @@ def _make_app():
 
         if not url:
             return redirect(url_for('index'))
+
+        # playlist detection — send to preview page first
+        if is_playlist_url(url) and not native_fmt_id:
+            params = f'?url={url}&format={output_format}&quality={quality}'
+            return redirect(f'/playlist{params}')
 
         file_id = generate_file_id(url)
         update_status(file_id, {'status': 'queued', 'url': url, 'format': output_format, 'quality': quality})
@@ -737,6 +807,59 @@ def _make_app():
                 })
                 break
         return redirect('/queue')
+
+    # ── playlist ──────────────────────────────────────────────────────────────
+
+    @app.route('/playlist', methods=['GET'])
+    def playlist_preview():
+        url = request.args.get('url', '').strip()
+        preset_format = request.args.get('format', '3gp')
+        preset_quality = request.args.get('quality', '')
+        playlist = None
+        error = None
+        if url:
+            playlist, error = get_playlist_info(url)
+        ctx = common_ctx()
+        ctx.update({
+            'url': url,
+            'playlist': playlist,
+            'error': error,
+            'preset_format': preset_format,
+            'preset_quality': preset_quality,
+        })
+        return render_template('playlist.html', **ctx)
+
+    @app.route('/playlist/add', methods=['POST'])
+    def playlist_add():
+        playlist_url = request.form.get('playlist_url', '').strip()
+        output_format = request.form.get('format', '3gp')
+        video_ids = request.form.getlist('video_ids')
+
+        if output_format == 'mp4':
+            quality = request.form.get('mp4_quality', '480p')
+        elif output_format == 'mp3':
+            quality = request.form.get('mp3_quality', 'high')
+        else:
+            quality = request.form.get('video_quality', 'low')
+
+        if not playlist_url or not video_ids:
+            return redirect('/playlist')
+
+        added = 0
+        for vid_id in video_ids:
+            vid_url = f'https://www.youtube.com/watch?v={vid_id}'
+            file_id = generate_file_id(vid_url)
+            update_status(file_id, {
+                'status': 'queued',
+                'url': vid_url,
+                'format': output_format,
+                'quality': quality,
+            })
+            _queue.add(vid_url, file_id, output_format, quality)
+            added += 1
+
+        logger.info(f"Playlist: queued {added} videos from {playlist_url}")
+        return redirect(f'/queue?added={added}')
 
     # ── status ────────────────────────────────────────────────────────────────
 

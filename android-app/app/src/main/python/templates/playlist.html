@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Playlist — 3gpTube{% endblock %}
+{% block content %}
+<h1>Playlist</h1>
+
+{% if error %}
+<div class="error"><p><strong>[X]</strong> {{ error }}</p></div>
+<a href="/" class="button">Back</a>
+{% elif playlist %}
+
+<div class="success">
+  <strong>{{ playlist.playlist_title }}</strong>
+  {% if playlist.uploader %}<br><span style="font-size:12px">by {{ playlist.uploader }}</span>{% endif %}
+  <br><span style="font-size:12px">
+    {{ playlist.fetched }} video{% if playlist.fetched != 1 %}s{% endif %} shown
+    {% if playlist.total and playlist.total > playlist.fetched %}
+    (of {{ playlist.total }} total — first {{ playlist.fetched }} loaded)
+    {% endif %}
+  </span>
+</div>
+
+<form method="POST" action="/playlist/add">
+<input type="hidden" name="playlist_url" value="{{ url }}">
+
+<!-- format & quality -->
+<div style="background:#f5f5f5;border:2px solid #333;padding:10px;margin-bottom:12px">
+  <p style="margin:0 0 8px;font-weight:bold">Format for all videos:</p>
+  <div style="margin-bottom:8px">
+    <label><input type="radio" name="format" value="3gp" checked onchange="showQ()"> 3GP</label>
+    <label><input type="radio" name="format" value="mp3" onchange="showQ()"> MP3</label>
+    <label><input type="radio" name="format" value="mp4" onchange="showQ()"> MP4</label>
+  </div>
+
+  <div id="q3gp">
+    <select name="video_quality">
+      {% for k,p in video_presets.items() %}
+      <option value="{{ k }}" {% if k=='low' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div id="qMp3" style="display:none">
+    <select name="mp3_quality">
+      {% for k,p in mp3_presets.items() %}
+      <option value="{{ k }}" {% if k=='high' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div id="qMp4" style="display:none">
+    <select name="mp4_quality">
+      {% for k,p in mp4_presets.items() %}
+      <option value="{{ k }}" {% if k=='480p' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<!-- video list with checkboxes -->
+<p style="font-size:13px;margin-bottom:6px">
+  <strong>Select videos to download:</strong>
+  <span style="float:right">
+    <a href="#" onclick="toggleAll(true);return false" style="font-size:12px">All</a> /
+    <a href="#" onclick="toggleAll(false);return false" style="font-size:12px">None</a>
+  </span>
+</p>
+
+<div style="border:2px solid #ddd;max-height:340px;overflow-y:auto;margin-bottom:12px">
+{% for v in playlist.videos %}
+<label style="display:flex;align-items:flex-start;gap:8px;padding:8px;border-bottom:1px solid #eee;cursor:pointer;margin:0">
+  <input type="checkbox" name="video_ids" value="{{ v.id }}" checked style="margin-top:3px;min-width:16px">
+  <div style="flex:1;min-width:0">
+    <div style="font-size:13px;font-weight:bold;word-break:break-word;line-height:1.3">{{ v.title }}</div>
+    <div style="font-size:11px;color:#666">
+      {{ loop.index }}. {{ v.duration }}
+      {% if v.channel %} · {{ v.channel }}{% endif %}
+    </div>
+  </div>
+</label>
+{% endfor %}
+</div>
+
+<div style="font-size:12px;color:#666;margin-bottom:10px">
+  <span id="selectedCount">{{ playlist.fetched }}</span> of {{ playlist.fetched }} selected
+</div>
+
+<button type="submit" class="btn-green" id="addBtn">Add Selected to Queue</button>
+</form>
+
+<a href="/" class="button" style="background:#888;margin-top:6px">Cancel</a>
+
+<script>
+function showQ(){
+  var f=document.querySelector('input[name=format]:checked');
+  if(!f)return;
+  document.getElementById('q3gp').style.display=f.value==='3gp'?'block':'none';
+  document.getElementById('qMp3').style.display=f.value==='mp3'?'block':'none';
+  document.getElementById('qMp4').style.display=f.value==='mp4'?'block':'none';
+}
+function toggleAll(on){
+  document.querySelectorAll('input[name=video_ids]').forEach(function(c){c.checked=on});
+  updateCount();
+}
+function updateCount(){
+  var n=document.querySelectorAll('input[name=video_ids]:checked').length;
+  document.getElementById('selectedCount').textContent=n;
+}
+document.querySelectorAll('input[name=video_ids]').forEach(function(c){c.addEventListener('change',updateCount)});
+document.querySelectorAll('input[name=format]').forEach(function(r){r.addEventListener('change',showQ)});
+</script>
+
+{% else %}
+
+<!-- manual playlist URL entry -->
+<form method="GET" action="/playlist">
+<p><strong>YouTube playlist URL:</strong></p>
+<input type="url" name="url" placeholder="https://www.youtube.com/playlist?list=..." value="{{ url or '' }}" required>
+<button type="submit">Load Playlist</button>
+</form>
+
+<div class="info">
+<p>Paste a YouTube playlist URL above. All videos will be shown so you can pick which ones to download and in what format.</p>
+</div>
+{% endif %}
+
+{% endblock %}

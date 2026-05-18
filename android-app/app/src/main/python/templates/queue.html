@@ -4,6 +4,12 @@
 {% block content %}
 <h1>Download Queue</h1>
 
+{% if request.args.get('added') %}
+<div class="success">
+  <p class="center">[OK] <strong>{{ request.args.get('added') }} video{% if request.args.get('added') != '1' %}s{% endif %}</strong> added to the queue from playlist.</p>
+</div>
+{% endif %}
+
 <!-- summary strip -->
 <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
   {% if active_count %}

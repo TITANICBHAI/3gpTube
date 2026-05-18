@@ -28,19 +28,17 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: download queue manager with live progress list
+  git -C /home/runner/workspace commit -m "feat: playlist support with preview, per-video selection, queue integration
 
-- DownloadQueue class: sequential processing (one at a time), JSON-backed
-- _queue_worker background thread picks pending items automatically
-- /convert now adds to queue instead of spawning ad-hoc threads
-- /queue page: live list of pending/active/completed/failed items
-  - Auto-refreshes every 4 seconds
-  - Active item shows animated progress bar
-  - Per-item Download, Retry, Remove buttons
-  - Clear completed & failed in one tap
-- /queue/status JSON API for programmatic polling
-- /queue/retry/<id> re-queues a failed item with new file_id
-- Updated nav: added [Queue] between [Formats] and [History]"
+- is_playlist_url() detects all YouTube playlist URL patterns
+- get_playlist_info() fetches up to 50 entries flat (no download)
+- /convert auto-detects playlist URLs and redirects to /playlist preview
+- /playlist GET: shows playlist title, uploader, scrollable video list
+  with checkboxes (select all / none), format + quality picker
+- /playlist/add POST: queues only the selected videos, redirects to /queue
+- /queue now shows [X videos added from playlist] confirmation banner
+- [Playlist] added to nav for direct access
+- queue.html and base.html updated accordingly"
 fi
 
 echo "[3] Pushing to GitHub..."
