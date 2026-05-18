@@ -2,14 +2,14 @@
 set -e
 
 REPO="TITANICBHAI/3gpTube"
-REPO_URL="https://${GITHUB_TOKEN}@github.com/${REPO}.git"
 
 echo "=== 3gpTube - Push to GitHub ==="
 
-git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
-
 git config --global user.email "bot@3gptube.dev"
 git config --global user.name "3gpTube Bot"
+git config --global http.extraHeader "Authorization: Bearer ${GITHUB_TOKEN}"
+
+git remote set-url origin "https://github.com/${REPO}.git"
 
 echo "[1] Staging all changes..."
 git add -A
