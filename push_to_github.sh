@@ -28,23 +28,15 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "fix: bundle ffmpeg-kit-audio-gpl + upgrade yt-dlp in Android APK
+  git -C /home/runner/workspace commit -m "fix: correct ffmpeg-kit artifact name + revert yt-dlp version pin
 
-android-app/app/build.gradle:
-- Add com.arthenica:ffmpeg-kit-audio-gpl:6.0.LTS dependency
-  Provides H.263 (3GP), libmp3lame (MP3), libx264 (MP4) on Android
-  as a native .aar library — no binary to bundle manually
-- Pin yt-dlp>=2026.3.17 (was getting 2024.10.22 from Chaquopy mirror)
-
-android-app/app/src/main/python/flask_server.py:
-- _find_ffmpeg(): try ffmpeg-kit via Chaquopy Java bridge first;
-  returns '__ffmpeg_kit__' sentinel if available, else binary path
-- Add _FFmpegResult class: subprocess-compatible return object
-- Add _run_ffmpeg(cmd, timeout): unified runner — if cmd[0] is
-  '__ffmpeg_kit__', calls FFmpegKit.execute() via Chaquopy Java bridge;
-  otherwise falls through to subprocess.run() (desktop behaviour)
-- Replace all 3 subprocess.run([ffmpeg,...]) calls with _run_ffmpeg()
-  (MP3, 3GP, MP4 conversion paths all covered)"
+build.gradle:
+- ffmpeg-kit-audio-gpl does not exist on Maven Central — use
+  com.arthenica:ffmpeg-kit-full-gpl:6.0.LTS (confirmed available)
+  Covers: H.263 (3GP), libmp3lame (MP3), libx264 (MP4 H.264)
+- Revert yt-dlp version pin: Chaquopy mirror only has 2024.10.22,
+  pinning >=2026.3.17 would cause a Chaquopy resolution failure;
+  leave unpinned so Chaquopy uses latest it can resolve"
 fi
 
 echo "[3] Pushing to GitHub..."
