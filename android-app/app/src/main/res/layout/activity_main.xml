@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#1a1a2e">
@@ -15,8 +16,8 @@
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="4dp"
-        android:layout_alignParentTop="true"
+        android:layout_gravity="top"
         android:max="100"
         android:visibility="gone" />
 
-</RelativeLayout>
+</FrameLayout>

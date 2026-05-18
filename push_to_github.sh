@@ -28,14 +28,19 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: WebView + local Flask server via Chaquopy
+  git -C /home/runner/workspace commit -m "feat: auto-update yt-dlp, MP4 quality, formats page, YouTube cookie login
 
-- Replace native Android UI with full-screen WebView
-- Flask server starts locally on device via Chaquopy Python bridge
-- WebView loads http://127.0.0.1:5000 (fully offline except yt-dlp)
-- Templates bundled inside APK
-- Added flask, jinja2, werkzeug to Chaquopy pip installs
-- Removed unused native fragments, ViewModels, adapters"
+- Settings page with yt-dlp version display and manual update button
+- Auto-update yt-dlp on startup (once per day, background thread)
+- MP4 format with 360p/480p/720p/1080p quality presets via FFmpeg
+- Formats page: shows all native YouTube formats (direct/video-only/audio-only)
+  and allows direct download or re-encode via FFmpeg
+- Built-in YouTube login browser in MainActivity (WebView overlay)
+  - Android CookieManager extracts cookies after login
+  - POSTs cookies to /save-cookies as Netscape format
+- Manual cookie upload (file or paste) still supported
+- Updated nav: Home/Search/Formats/History/Cookies/Settings
+- Updated activity_main.xml with root FrameLayout for cookie login overlay"
 fi
 
 echo "[3] Pushing to GitHub..."

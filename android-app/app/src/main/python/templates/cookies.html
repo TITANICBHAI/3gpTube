@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Cookies — 3gpTube{% endblock %}
+{% block content %}
+<h1>YouTube Cookies</h1>
+
+{% if request.args.get('success') %}
+<div class="success"><p class="center">[OK] Cookies saved successfully ({{ cookie_count }} cookies).</p></div>
+{% elif request.args.get('deleted') %}
+<div class="info"><p class="center">Cookies deleted.</p></div>
+{% elif request.args.get('error') %}
+<div class="error"><p>Error: {{ request.args.get('error') }}</p></div>
+{% endif %}
+
+{% if has_cookies %}
+<div class="success">
+  <p class="center"><strong>[OK] Cookies Active</strong></p>
+  <p class="center">{{ cookie_count }} cookies stored — YouTube downloads have enhanced reliability.</p>
+  <form method="POST" action="/delete-cookies" style="margin-top:8px">
+    <button type="submit" class="btn-red" style="width:auto;padding:6px 12px;display:block;margin:0 auto">Remove Cookies</button>
+  </form>
+</div>
+{% else %}
+<div class="warn">
+  <p class="center"><strong>No cookies configured</strong></p>
+  <p style="font-size:12px">Without cookies, YouTube may rate-limit or block downloads. Logging in provides a more reliable experience.</p>
+</div>
+{% endif %}
+
+<hr>
+
+<!-- Built-in YouTube login -->
+<div class="info">
+  <h2>Option 1 — Log in to YouTube (Recommended)</h2>
+  <p style="font-size:13px">Opens YouTube in a browser window on this device. After you log in, cookies are extracted automatically.</p>
+  <a href="/cookie-login" class="button btn-green" id="loginBtn">Open YouTube Login</a>
+  <div id="loginStatus" style="display:none;padding:8px;background:#fff9e6;border:1px solid #d4a017;margin-top:8px;font-size:13px;text-align:center">
+    Waiting for login to complete...
+  </div>
+</div>
+
+<hr>
+
+<!-- Manual upload -->
+<div class="info">
+  <h2>Option 2 — Upload Cookie File</h2>
+  <p style="font-size:13px">Export cookies from your browser using the <strong>Get cookies.txt LOCALLY</strong> extension, then upload the file here.</p>
+  <form method="POST" action="/upload-cookies" enctype="multipart/form-data">
+    <p><strong>Upload .txt file:</strong></p>
+    <input type="file" name="cookie_file" accept=".txt" style="margin-bottom:10px;font-size:13px">
+    <button type="submit" class="btn-blue">Upload Cookie File</button>
+  </form>
+
+  <hr style="border-color:#4a90a4">
+
+  <form method="POST" action="/upload-cookies">
+    <p><strong>Or paste cookie content:</strong></p>
+    <textarea name="cookie_text" rows="5" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com  TRUE  /  FALSE  ..."></textarea>
+    <button type="submit" class="btn-blue">Save Pasted Cookies</button>
+  </form>
+</div>
+
+<div class="info">
+  <h2>Why cookies help:</h2>
+  <ul>
+    <li>Bypass YouTube rate limits</li>
+    <li>Access age-restricted videos</li>
+    <li>Better format availability</li>
+    <li>More stable downloads</li>
+  </ul>
+</div>
+
+<script>
+document.getElementById('loginBtn').addEventListener('click',function(e){
+  document.getElementById('loginStatus').style.display='block';
+  // MainActivity.kt intercepts this URL, opens YouTube WebView, extracts cookies,
+  // then POSTs to /save-cookies. This page will reload when done.
+  var check=setInterval(function(){
+    fetch('/ping').then(function(){
+      fetch('/cookies?check=1').then(function(r){return r.text()}).then(function(t){
+        if(t.indexOf('Cookies Active')!==-1){
+          clearInterval(check);
+          window.location.reload();
+        }
+      });
+    });
+  },3000);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Available Formats — 3gpTube{% endblock %}
+{% block content %}
+<h1>Available Formats</h1>
+
+<form method="GET" action="/formats">
+<p><strong>Paste YouTube URL:</strong></p>
+<input type="url" name="url" placeholder="https://www.youtube.com/watch?v=..." value="{{ url }}" required>
+<button type="submit">Check Formats</button>
+</form>
+
+{% if error %}
+<div class="error"><p><strong>[X] Error:</strong> {{ error }}</p></div>
+{% endif %}
+
+{% if fmt_data %}
+<div class="success">
+  <strong>{{ fmt_data.title }}</strong>
+  {% if fmt_data.duration %}<br>Duration: {{ fmt_data.duration }}{% endif %}
+</div>
+
+{% if fmt_data.direct %}
+<h2>Direct Download (Video + Audio)</h2>
+<p style="font-size:12px;color:#666">These formats download as-is — no re-encoding needed.</p>
+<table class="fmt-table">
+<tr><th>Quality</th><th>Format</th><th>Bitrate</th><th>Size</th><th>Action</th></tr>
+{% for f in fmt_data.direct %}
+<tr>
+  <td>{% if f.height %}{{ f.height }}p{% else %}{{ f.note or f.id }}{% endif %}</td>
+  <td><span class="badge badge-green">{{ f.ext|upper }}</span></td>
+  <td>{% if f.tbr %}{{ f.tbr }}k{% endif %}</td>
+  <td>{% if f.size_mb %}{{ f.size_mb }}MB{% else %}?{% endif %}</td>
+  <td>
+    <form method="POST" action="/convert" style="margin:0">
+      <input type="hidden" name="url" value="{{ url }}">
+      <input type="hidden" name="format" value="native">
+      <input type="hidden" name="native_fmt_id" value="{{ f.id }}">
+      <button type="submit" style="padding:3px 8px;font-size:11px;width:auto;margin:0">Get</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if fmt_data.video_only %}
+<h2>Video Only (needs merge)</h2>
+<p style="font-size:12px;color:#666">High-quality video streams — merged with best audio automatically.</p>
+<table class="fmt-table">
+<tr><th>Quality</th><th>Format</th><th>Bitrate</th><th>Action</th></tr>
+{% for f in fmt_data.video_only %}
+<tr>
+  <td>{% if f.height %}{{ f.height }}p{% else %}{{ f.note or f.id }}{% endif %}</td>
+  <td><span class="badge badge-blue">{{ f.ext|upper }}</span></td>
+  <td>{% if f.tbr %}{{ f.tbr }}k{% endif %}</td>
+  <td>
+    <form method="POST" action="/convert" style="margin:0">
+      <input type="hidden" name="url" value="{{ url }}">
+      <input type="hidden" name="format" value="native">
+      <input type="hidden" name="native_fmt_id" value="{{ f.id }}+bestaudio">
+      <button type="submit" style="padding:3px 8px;font-size:11px;width:auto;margin:0">Get</button>
+    </form>
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+<hr>
+<h2>Re-encode with FFmpeg</h2>
+<p style="font-size:12px;color:#666">Convert to a specific format — works on all devices.</p>
+
+<form method="POST" action="/convert">
+<input type="hidden" name="url" value="{{ url }}">
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+  <div style="flex:1;min-width:130px">
+    <p style="margin:4px 0"><strong>Format:</strong></p>
+    <select name="format" id="fmtSel" onchange="updateQuality()">
+      <option value="mp4">MP4</option>
+      <option value="mp3">MP3</option>
+      <option value="3gp">3GP</option>
+    </select>
+  </div>
+  <div style="flex:1;min-width:130px" id="qualDiv">
+    <p style="margin:4px 0"><strong>Quality:</strong></p>
+    <select name="mp4_quality" id="qualSel">
+      {% for k,p in mp4_presets.items() %}
+      <option value="{{ k }}" {% if k=='480p' %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+<button type="submit" class="btn-green" style="margin-top:8px">Convert</button>
+</form>
+
+{% else %}
+{% if not url %}
+<div class="info">
+<p>Enter a YouTube URL above to see all available formats — both native (direct download) and FFmpeg-encoded options.</p>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+var mp4q='{% for k,p in mp4_presets.items() %}<option value="{{ k }}" {% if k=="480p" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}';
+var mp3q='{% for k,p in mp3_presets.items() %}<option value="{{ k }}" {% if k=="high" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}';
+var gp3q='{% for k,p in video_presets.items() %}<option value="{{ k }}" {% if k=="low" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}';
+function updateQuality(){
+  var f=document.getElementById('fmtSel').value;
+  var sel=document.getElementById('qualSel');
+  sel.name=f==='mp4'?'mp4_quality':f==='mp3'?'mp3_quality':'video_quality';
+  sel.innerHTML=f==='mp4'?mp4q:f==='mp3'?mp3q:gp3q;
+}
+</script>
+{% endblock %}

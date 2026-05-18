@@ -1,117 +1,92 @@
 {% extends "base.html" %}
-
-{% block title %}YouTube Converter - Feature Phone{% endblock %}
-
+{% block title %}3gpTube - Converter{% endblock %}
 {% block content %}
-<h1>Video Converter</h1>
-<p class="center"><strong>For Feature Phones</strong></p>
+<h1>3gpTube</h1>
 
-<form method="POST" action="/convert">
-<p><strong>Paste Video URL (YouTube or Direct Download Link):</strong></p>
-<input type="text" name="url" placeholder="https://www.youtube.com/watch?v=... or https://example.com/video.mp4" required>
+<form method="POST" action="/convert" id="mainForm">
 
-<p><strong>Select Format:</strong></p>
-<p style="margin: 5px 0;">
-<input type="radio" name="format" value="3gp" id="fmt_3gp" checked>
-<label for="fmt_3gp">3GP Video (176x144)</label>
-</p>
-<p style="margin: 5px 0;">
-<input type="radio" name="format" value="mp3" id="fmt_mp3">
-<label for="fmt_mp3">MP3 Audio Only</label>
-</p>
+<p><strong>YouTube URL:</strong></p>
+<input type="url" name="url" id="urlInput" placeholder="https://www.youtube.com/watch?v=..." value="{{ prefill_url }}" required>
 
-<p><strong>3GP Video Quality:</strong></p>
-<select name="video_quality" style="width: 100%; padding: 8px; margin-bottom: 10px;">
-<option value="auto">Auto (Recommended - Low Quality)</option>
-{% for key, preset in video_presets.items() %}
-<option value="{{ key }}">{{ preset.name }} - {{ preset.description }}</option>
-{% endfor %}
+<p><strong>Format:</strong></p>
+<div style="margin-bottom:10px">
+  <label><input type="radio" name="format" value="3gp" id="fmt3gp" checked onchange="showQuality()"> 3GP (Feature Phone)</label><br>
+  <label><input type="radio" name="format" value="mp3" id="fmtMp3" onchange="showQuality()"> MP3 Audio</label><br>
+  <label><input type="radio" name="format" value="mp4" id="fmtMp4" onchange="showQuality()"> MP4 Video</label>
+</div>
+
+<div id="q3gp">
+<p><strong>3GP Quality:</strong></p>
+<select name="video_quality">
+  <option value="auto">Auto (Low)</option>
+  {% for k,p in video_presets.items() %}
+  <option value="{{ k }}" {% if k=='low' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+  {% endfor %}
 </select>
+</div>
 
-<p><strong>MP3 Audio Quality:</strong></p>
-<select name="mp3_quality" style="width: 100%; padding: 8px; margin-bottom: 10px;">
-<option value="auto">Auto (Recommended - 128kbps)</option>
-{% for key, preset in mp3_presets.items() %}
-<option value="{{ key }}">{{ preset.name }} - {{ preset.description }}</option>
-{% endfor %}
+<div id="qMp3" style="display:none">
+<p><strong>MP3 Quality:</strong></p>
+<select name="mp3_quality">
+  <option value="auto">Auto (128kbps)</option>
+  {% for k,p in mp3_presets.items() %}
+  <option value="{{ k }}" {% if k=='high' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+  {% endfor %}
 </select>
-<p style="font-size: 12px; color: #666; margin-top: -5px;">Choose quality based on your selected format above</p>
+</div>
 
-<p><strong>Subtitle Options - EXPERIMENTAL (3GP Video Only):</strong></p>
-<div style="margin-bottom: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
-<label style="display: flex; align-items: center; cursor: pointer;">
-<input type="checkbox" name="burn_subtitles" value="on" style="margin-right: 8px;">
-<span>Burn English subtitles into video (YouTube style)</span>
-</label>
-<p style="font-size: 11px; color: #856404; margin: 5px 0 0 0;"><strong>⚠️ Note:</strong> Requires ImageMagick on server. May not work on all deployments.<br>• Only for videos under 45 minutes and 500MB<br>• Uses auto-generated or manual English subtitles<br>• Processing may take longer<br>• Only applies when 3GP Video is selected<br>• Feature will fail gracefully if dependencies missing</p>
+<div id="qMp4" style="display:none">
+<p><strong>MP4 Quality:</strong></p>
+<select name="mp4_quality">
+  {% for k,p in mp4_presets.items() %}
+  <option value="{{ k }}" {% if k=='480p' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
+  {% endfor %}
+</select>
+<p style="font-size:12px;color:#666;margin-top:-5px">FFmpeg re-encode for compatibility</p>
 </div>
 
 <button type="submit">Start Conversion</button>
 </form>
 
 <hr>
-
-<div class="info">
-<p class="center"><strong>Quick Actions:</strong></p>
 <p class="center">
-<a href="/mp3" class="button" style="margin: 5px;">MP3 Converter</a>
-<a href="/3gp" class="button" style="margin: 5px;">3GP Converter</a>
-<a href="/search" class="button" style="margin: 5px;">Search Videos</a>
+  <a href="/formats" class="button btn-blue" style="display:inline-block;width:auto;padding:8px 14px;margin:3px">Check Formats</a>
+  <a href="/search" class="button btn-blue" style="display:inline-block;width:auto;padding:8px 14px;margin:3px">Search</a>
 </p>
-</div>
-
-<hr>
-
-<div class="info">
-<h2>How it works:</h2>
-<ul>
-<li><strong>1.</strong> Paste any YouTube URL above</li>
-<li><strong>2.</strong> Choose 3GP video or MP3 audio</li>
-<li><strong>3.</strong> Pick your quality (or use Auto)</li>
-<li><strong>4.</strong> Wait for conversion (1-10 minutes)</li>
-<li><strong>5.</strong> Download and enjoy on your phone!</li>
-</ul>
-<p class="center" style="margin-top: 10px;"><strong>[OK] Works on 2G networks</strong></p>
-<p class="center"><strong>[OK] Perfect for feature phones</strong></p>
-</div>
-
-<div class="info">
-<h2>Format Details:</h2>
-<p><strong>3GP Video Quality Options:</strong></p>
-<ul>
-<li>Ultra Low: ~2.3 MB per 5 min (10fps, 150k video)</li>
-<li>Low: ~3.2 MB per 5 min (12fps, 200k video)</li>
-<li>Medium: ~4.6 MB per 5 min (15fps, 300k video)</li>
-<li>High: ~6 MB per 5 min (18fps, 400k video)</li>
-</ul>
-<p style="font-size: 12px; color: #666;">All 3GP videos: 24kbps AAC audio, 176x144 resolution</p>
-<p><strong>MP3 Audio Quality Options:</strong></p>
-<ul>
-<li>128 kbps: ~5 MB per 5 min (good)</li>
-<li>192 kbps: ~7 MB per 5 min (high)</li>
-<li>256 kbps: ~9 MB per 5 min (very high)</li>
-<li>320 kbps: ~12 MB per 5 min (maximum)</li>
-</ul>
-<p><strong>All formats:</strong></p>
-<ul>
-<li>Resolution: 176x144 (3GP only)</li>
-<li>Max length: {{ max_hours|int }} hours</li>
-<li>Files auto-delete after 6 hours</li>
-</ul>
-</div>
-
-<div class="info">
-<p class="center"><strong>100% Free - No Ads</strong></p>
-<p class="center">Works on Opera Mini 4.4</p>
-</div>
 
 {% if not has_cookies %}
-<div class="info">
-<p class="center" style="font-size: 12px; color: #666;">Server uses 7 download methods to work without cookies. If downloads fail repeatedly, <a href="/cookies" style="color: #4a904a; text-decoration: underline;">cookies can help</a>.</p>
+<div class="warn">
+  <p class="center" style="margin:0;font-size:12px">No cookies — may hit rate limits. <a href="/cookies">[Set up cookies]</a></p>
 </div>
 {% else %}
 <div class="success">
-<p class="center">[OK] Cookies configured - enhanced reliability</p>
+  <p class="center" style="margin:0">[OK] Cookies active — enhanced reliability</p>
 </div>
 {% endif %}
+
+<div class="info">
+<h2>Formats:</h2>
+<ul>
+<li><strong>3GP</strong> — 176×144 for Nokia/feature phones, 2G-friendly</li>
+<li><strong>MP3</strong> — Audio only, 128–320 kbps</li>
+<li><strong>MP4</strong> — 360p / 480p / 720p / 1080p</li>
+<li><strong>Formats page</strong> — See all native YouTube formats &amp; direct download</li>
+</ul>
+</div>
+
+<script>
+function showQuality(){
+  var f=document.querySelector('input[name=format]:checked');
+  if(!f)return;
+  document.getElementById('q3gp').style.display=f.value==='3gp'?'block':'none';
+  document.getElementById('qMp3').style.display=f.value==='mp3'?'block':'none';
+  document.getElementById('qMp4').style.display=f.value==='mp4'?'block':'none';
+}
+showQuality();
+document.querySelectorAll('input[name=format]').forEach(function(r){r.addEventListener('change',showQuality)});
+{% if prefill_url %}
+document.getElementById('fmtMp4').checked=true;
+showQuality();
+{% endif %}
+</script>
 {% endblock %}

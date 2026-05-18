@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Settings — 3gpTube{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+{% if request.args.get('saved') %}
+<div class="success"><p class="center">[OK] Settings saved.</p></div>
+{% endif %}
+
+<!-- yt-dlp updater -->
+<div class="info">
+  <h2>yt-dlp (Downloader)</h2>
+  <p><strong>Current version:</strong> {{ settings.ytdlp_version }}</p>
+  <p style="font-size:12px;color:#666">
+    Last checked: {% if settings.last_update_check %}{{ (settings.last_update_check | int) | string }}{% else %}Never{% endif %}
+  </p>
+  <button id="updateBtn" onclick="updateYtdlp()" class="btn-blue">Update yt-dlp Now</button>
+  <div id="updateStatus" style="display:none;padding:8px;background:#fff9e6;border:1px solid #d4a017;margin-top:8px;font-size:13px"></div>
+</div>
+
+<!-- auto-update toggle -->
+<form method="POST" action="/settings/save">
+<div class="info">
+  <h2>Auto-Update</h2>
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <input type="checkbox" name="auto_update" {% if settings.auto_update_ytdlp %}checked{% endif %} style="width:18px;height:18px">
+    <span>Auto-update yt-dlp on startup (once per day)</span>
+  </label>
+  <p style="font-size:12px;color:#666;margin-top:6px">Keeps YouTube downloads working without rebuilding the APK.</p>
+</div>
+<button type="submit" class="btn-green">Save Settings</button>
+</form>
+
+<!-- about -->
+<div class="info">
+  <h2>About</h2>
+  <ul>
+    <li>Flask server runs locally on this device</li>
+    <li>yt-dlp handles all YouTube downloads</li>
+    <li>FFmpeg converts video/audio (if available)</li>
+    <li>No data leaves your device except to YouTube</li>
+  </ul>
+</div>
+
+<script>
+function updateYtdlp(){
+  var btn=document.getElementById('updateBtn');
+  var status=document.getElementById('updateStatus');
+  btn.disabled=true;
+  btn.textContent='Updating...';
+  status.style.display='block';
+  status.textContent='Downloading latest yt-dlp... (may take 30-60 seconds)';
+  fetch('/settings/update-ytdlp',{method:'POST'})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d.status==='updated'){
+        status.style.background='#e8f8e8';
+        status.style.borderColor='#4a904a';
+        status.textContent='[OK] Updated to version '+d.version;
+      } else if(d.status==='skipped'){
+        status.textContent='Already up to date (checked recently).';
+      } else {
+        status.style.background='#f8e8e8';
+        status.style.borderColor='#a44a4a';
+        status.textContent='Error: '+(d.error||'Unknown error');
+      }
+      btn.disabled=false;
+      btn.textContent='Update yt-dlp Now';
+    })
+    .catch(function(e){
+      status.textContent='Request failed: '+e;
+      btn.disabled=false;
+      btn.textContent='Update yt-dlp Now';
+    });
+}
+</script>
+{% endblock %}
