@@ -9,7 +9,7 @@ unset GIT_ASKPASS
 unset SSH_ASKPASS
 export GIT_TERMINAL_PROMPT=0
 
-TOKEN=$(echo -n "${GITHUB_TOKEN}" | tr -d '[:space:]')
+TOKEN=$(echo -n "${GITHUB_PERSONAL_ACCESS_TOKEN}" | tr -d '[:space:]')
 
 # Use a clean temporary HOME so no conflicting system git config applies
 export HOME=/tmp/githome
@@ -28,17 +28,12 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: playlist support with preview, per-video selection, queue integration
+  git -C /home/runner/workspace commit -m "fix: add Material Components dependency to resolve Android build failure
 
-- is_playlist_url() detects all YouTube playlist URL patterns
-- get_playlist_info() fetches up to 50 entries flat (no download)
-- /convert auto-detects playlist URLs and redirects to /playlist preview
-- /playlist GET: shows playlist title, uploader, scrollable video list
-  with checkboxes (select all / none), format + quality picker
-- /playlist/add POST: queues only the selected videos, redirects to /queue
-- /queue now shows [X videos added from playlist] confirmation banner
-- [Playlist] added to nav for direct access
-- queue.html and base.html updated accordingly"
+- Add com.google.android.material:material:1.11.0 to app/build.gradle
+- Fixes missing Theme.MaterialComponents.DayNight.DarkActionBar and
+  related colorPrimaryVariant/colorOnPrimary/colorSecondary attributes
+- Resolves processDebugResources FAILED in GitHub Actions CI build"
 fi
 
 echo "[3] Pushing to GitHub..."
