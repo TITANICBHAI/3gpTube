@@ -29,6 +29,7 @@
     <label><input type="radio" name="format" value="3gp" checked onchange="showQ()"> 3GP</label>
     <label><input type="radio" name="format" value="mp3" onchange="showQ()"> MP3</label>
     <label><input type="radio" name="format" value="mp4" onchange="showQ()"> MP4</label>
+    <label><input type="radio" name="format" value="direct" onchange="showQ()"> Direct (No FFmpeg)</label>
   </div>
 
   <div id="q3gp">
@@ -51,6 +52,11 @@
       <option value="{{ k }}" {% if k=='480p' %}selected{% endif %}>{{ p.name }} — {{ p.description }}</option>
       {% endfor %}
     </select>
+  </div>
+  <div id="qDirect" style="display:none">
+    <p style="font-size:11px;color:#555;background:#e8f5e9;border:1px solid #a5d6a7;padding:6px;margin:4px 0 0">
+      No FFmpeg needed — downloads YouTube's pre-packaged MP4 directly for each video.
+    </p>
   </div>
 </div>
 
@@ -94,6 +100,7 @@ function showQ(){
   document.getElementById('q3gp').style.display=f.value==='3gp'?'block':'none';
   document.getElementById('qMp3').style.display=f.value==='mp3'?'block':'none';
   document.getElementById('qMp4').style.display=f.value==='mp4'?'block':'none';
+  document.getElementById('qDirect').style.display=f.value==='direct'?'block':'none';
 }
 function toggleAll(on){
   document.querySelectorAll('input[name=video_ids]').forEach(function(c){c.checked=on});

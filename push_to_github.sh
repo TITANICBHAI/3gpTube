@@ -28,26 +28,13 @@ echo "[2] Committing..."
 if git -C /home/runner/workspace diff --cached --quiet; then
   echo "[INFO] Nothing new to commit"
 else
-  git -C /home/runner/workspace commit -m "feat: add Direct Download (no FFmpeg) format to web + Android
+  git -C /home/runner/workspace commit -m "feat: add Direct Download to Android playlist page (all screens covered)
 
-Web app (app.py + templates/index.html + templates/search.html):
-- Add 'direct' format: yt-dlp best[ext=mp4]/best[ext=webm]/best
-- Skip FFmpeg entirely — detect actual extension, rename temp file
-- Allow 'direct' in convert route; quality auto-set to 'auto'
-- Add quality_preset stub so status logging doesn't crash
-- Add Direct Download radio button + info panel to index.html
-- Add Direct radio + info panel to search.html per result
-
-Android (flask_server.py + both templates):
-- Add is_direct flag; fmt_str uses pre-muxed stream selector
-- Post-download: detect extension, rename, mark completed with no FFmpeg
-- Direct skips retry strategies same as native
-- Add Direct Download radio to android index.html + search.html
-- Note 3GP/MP4 now show 'Requires FFmpeg on device' warning
-
-Motivation: Android APK ships no FFmpeg binary; 3GP silently
-falls back to MP4 and MP3 postprocessor also needs FFmpeg.
-Direct Download is the recommended Android-safe format."
+- Add 'Direct (No FFmpeg)' radio to android playlist.html format selector
+- Add qDirect info panel (green box, no quality dropdown needed)
+- Wire showQ() to show/hide qDirect div
+- Direct Download now present on every screen with a format picker:
+  web index, web search, android index, android search, android playlist"
 fi
 
 echo "[3] Pushing to GitHub..."
