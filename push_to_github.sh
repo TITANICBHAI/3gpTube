@@ -12,7 +12,14 @@ unset GIT_ASKPASS
 unset SSH_ASKPASS
 export GIT_TERMINAL_PROMPT=0
 
-git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
+# Trim any whitespace from token
+TOKEN=$(echo -n "${GITHUB_TOKEN}" | tr -d '[:space:]')
+
+# Write credentials to store file
+echo "https://x-access-token:${TOKEN}@github.com" > /tmp/git-credentials
+git config --global credential.helper "store --file /tmp/git-credentials"
+
+git remote set-url origin "https://github.com/${REPO}.git"
 
 echo "[1] Staging all changes..."
 git add -A
@@ -23,22 +30,19 @@ if git diff --cached --quiet; then
 else
   git commit -m "feat: WebView + local Flask server via Chaquopy
 
-- Replace native Android UI fragments with full-screen WebView
-- Flask server starts locally on device via Chaquopy Python bridge
+- Replace native Android UI with full-screen WebView
+- Flask server starts locally on device via Chaquopy Python bridge  
 - WebView loads http://127.0.0.1:5000 (fully offline except yt-dlp)
 - Templates bundled inside APK (base, index, mp3, 3gp, search, history, status)
 - Added flask, jinja2, werkzeug to Chaquopy pip installs
-- MainActivity: starts Flask in coroutine, polls /ping, then loads WebView
-- Supports YouTube share intent (pre-fills URL in web UI)
-- Back button navigates WebView history
-- Cleartext traffic enabled for localhost
 - Removed unused native fragments, ViewModels, adapters"
 fi
 
 echo "[3] Pushing to GitHub..."
-GIT_ASKPASS=/bin/echo git push origin HEAD:main || GIT_ASKPASS=/bin/echo git push origin HEAD:master
+git push origin HEAD:main 2>&1 && echo "[OK] Pushed to main" || \
+git push origin HEAD:master 2>&1 && echo "[OK] Pushed to master"
+
+rm -f /tmp/git-credentials
 
 echo ""
-echo "[OK] Pushed to https://github.com/${REPO}"
-echo "[OK] GitHub Actions will now build the APK"
-echo "[OK] Watch: https://github.com/${REPO}/actions"
+echo "[OK] Done! Watch build at: https://github.com/${REPO}/actions"
