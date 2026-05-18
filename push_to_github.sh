@@ -7,15 +7,20 @@ echo "=== 3gpTube - Push to GitHub ==="
 
 git config --global user.email "bot@3gptube.dev"
 git config --global user.name "3gpTube Bot"
-git config --global http.extraHeader "Authorization: Bearer ${GITHUB_TOKEN}"
 
-git remote set-url origin "https://github.com/${REPO}.git"
+unset GIT_ASKPASS
+unset SSH_ASKPASS
+export GIT_TERMINAL_PROMPT=0
+
+git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git"
 
 echo "[1] Staging all changes..."
 git add -A
 
 echo "[2] Committing..."
-git diff --cached --quiet && echo "[INFO] Nothing new to commit" || \
+if git diff --cached --quiet; then
+  echo "[INFO] Nothing new to commit"
+else
   git commit -m "feat: WebView + local Flask server via Chaquopy
 
 - Replace native Android UI fragments with full-screen WebView
@@ -28,11 +33,12 @@ git diff --cached --quiet && echo "[INFO] Nothing new to commit" || \
 - Back button navigates WebView history
 - Cleartext traffic enabled for localhost
 - Removed unused native fragments, ViewModels, adapters"
+fi
 
 echo "[3] Pushing to GitHub..."
-git push origin HEAD:main 2>&1 || git push origin HEAD:master 2>&1
+GIT_ASKPASS=/bin/echo git push origin HEAD:main || GIT_ASKPASS=/bin/echo git push origin HEAD:master
 
 echo ""
 echo "[OK] Pushed to https://github.com/${REPO}"
-echo "[OK] GitHub Actions will now build the APK automatically"
-echo "[OK] Watch build at: https://github.com/${REPO}/actions"
+echo "[OK] GitHub Actions will now build the APK"
+echo "[OK] Watch: https://github.com/${REPO}/actions"
