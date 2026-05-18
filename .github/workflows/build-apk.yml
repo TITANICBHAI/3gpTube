@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -25,19 +25,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies for Chaquopy
-        run: pip install yt-dlp requests
+      - name: Install Python dependencies for Chaquopy build
+        run: pip install yt-dlp requests flask jinja2 werkzeug
 
       - name: Download Gradle bootstrap wrapper JAR
         working-directory: android-app
         run: |
           mkdir -p gradle/wrapper
-          echo "Downloading Gradle bootstrap wrapper JAR..."
+          echo "Downloading Gradle wrapper JAR..."
           curl -fsSL -o gradle/wrapper/gradle-wrapper.jar \
             "https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar"
           ls -lh gradle/wrapper/
-          echo "Verifying JAR contains GradleWrapperMain..."
-          unzip -p gradle/wrapper/gradle-wrapper.jar org/gradle/wrapper/GradleWrapperMain.class > /dev/null && echo "JAR OK" || echo "WARNING: class not found"
+          unzip -p gradle/wrapper/gradle-wrapper.jar org/gradle/wrapper/GradleWrapperMain.class > /dev/null && echo "JAR OK"
 
       - name: Grant execute permission for gradlew
         working-directory: android-app
@@ -62,10 +61,10 @@ jobs:
       - name: List APK output
         run: find android-app -name "*.apk" -type f
 
-      - name: Upload APK artifact
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: YouTubeConverter-Debug-APK
+          name: 3gpTube-Debug-APK
           path: android-app/app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
@@ -76,10 +75,10 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
         continue-on-error: true
 
-      - name: Upload Release APK artifact
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: YouTubeConverter-Release-APK
+          name: 3gpTube-Release-APK
           path: android-app/app/build/outputs/apk/release/*.apk
           retention-days: 30
         continue-on-error: true
